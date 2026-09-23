@@ -33,8 +33,10 @@ each with its own pick. Each team once per entry. Tie = loss. Schedule is hard-c
 
 ## P% (pick popularity), one number per leg
 - Leg has Circa actuals → use them.
-- Otherwise the **field model** `win^a · e^(−b·FV) · availability`, normalized over favored teams; `a`, `b` fit by
-  grid search against every leg with actuals. Click the "P% = …" button for the per-team audit table.
+- Otherwise the **field model** `win^a · e^(−b·FV) · e^(−c·HP) · availability`, normalized over favored teams.
+  `HP` (holiday pressure) is the scarcity of each upcoming holiday pool (1/teams still available to the field)
+  weighted by how near that week is (0.8 per week), and zero once it passes. `a`, `b`, `c` are fit by coordinate
+  descent against every leg with actuals. Click the "P% = …" button for the per-team audit table.
 
 ## EV
 `EV = W / (P + Σ over other games of P·W)`, then scaled so the pick-weighted average = 1.00 (Atlas / SurvivorGrid convention).

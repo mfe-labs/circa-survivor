@@ -110,18 +110,19 @@ future value       = sum of those weights</code>
 
 <h2 id="p"><span class="n">4</span>Pick popularity</h2>
 <p>Once a week locks, Circa publishes a PDF of all 25,000 entries and their picks, and the app counts them. Before it locks, this model estimates them.</p>
-<code class="f">score = win^a × e^(−b × future value) × availability
+<code class="f">score = win^a × e^(−b × future value) × e^(−c × holiday pressure) × availability
 P%    = score ÷ (sum of scores over teams favored that week)</code>
 <ul>
 <li><code>win^a</code> amplifies small differences in win chance, because the field concentrates on the safest-looking team far harder than the odds alone imply. At a = 11, ten extra points of win chance make a team roughly three times more attractive.</li>
-<li><code>e^(−b × future value)</code> marks down teams the field is saving. At b = 0.34 each point of future value costs about 29%.</li>
+<li><code>e^(−b × future value)</code> marks down teams the field is saving. At b = 0.26 each point of future value costs about 23%.</li>
+<li><code>e^(−c × holiday pressure)</code> marks down teams the field should be holding for a holiday week. Pressure is how scarce that week's pool is (1 ÷ the teams still broadly available to the field) times how close the week is, decayed 0.8 per week, and it drops to zero once the week passes. For a team in both pools that is a 4% cut in Week 3 and a 21% cut by Week 11, at <code>c</code> = 2.</li>
 <li><code>availability</code> is the share of surviving entries that have not already used the team, derived from Circa's past results. Near 1.00 in September, a major factor by midseason.</li>
 <li>Teams below 50% win chance score zero.</li>
 </ul>
-<p>The two constants are fitted, not chosen: a grid search over every week that has Circa's actual numbers, scoring each candidate by the total error across teams, weighted by each team's real share so the big picks matter most. A penalty holds them near 8 and 0.15, measured against a plausible spread for each, and weakens on its own as weeks accumulate. They currently sit at <strong>a = 11, b = 0.34</strong> on two weeks of data.</p>
+<p>All three constants are fitted, not chosen: a search over every week that has Circa's actual numbers, scoring each candidate by the total error across teams, weighted by each team's real share so the big picks matter most. A penalty holds them near 8, 0.15 and 0, measured against a plausible spread for each, and weakens on its own as weeks accumulate. They currently sit at <strong>a = 11, b = 0.26, c = 0</strong> on two weeks of data. The holiday weight is at zero because September data cannot see the field saving November teams; if that behaviour shows up as the holidays approach, the fit will pick it up.</p>
 <div class="eg">
 <h3>49ers, Week 2</h3>
-<p>0.88<sup>11</sup> = 0.245. Future value 4.4, so e<sup>−1.50</sup> = 0.224. Availability 1.00. Score 0.245 × 0.224 = 0.055.</p>
+<p>0.88<sup>11</sup> = 0.245. Future value 4.4, so e<sup>−1.14</sup> = 0.319. No holiday exposure, so that term is 1. Availability 1.00. Score 0.245 × 0.319 = 0.078.</p>
 <p>Divided by the sum of every favored team's score, that came out at <strong>40%</strong> against an actual 39.7%.</p>
 <p>Across the two weeks so far the fit lands within about 3 points on the biggest picks, except the Week 2 Bucs, where it still says 26% against an actual 36%.</p>
 </div>
