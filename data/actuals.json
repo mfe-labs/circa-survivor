@@ -138,7 +138,7 @@
    "source": "https://www.circasports.com/wp-content/uploads/2026/09/Circa-Survivor-2026-Week-2-Selections.pdf"
   },
   "W3": {
-   "asOf": "Sep 27 (2 pending)",
+   "asOf": "Sep 27 (1 pending)",
    "picks": {
     "GB": 497,
     "CAR": 89,
@@ -188,12 +188,12 @@
     "TB",
     "TEN",
     "HOU",
+    "LAR",
     "NYJ",
     "NOPICK"
    ],
    "pending": [
-    "PHI",
-    "LAR"
+    "PHI"
    ],
    "source": "https://www.circasports.com/wp-content/uploads/2026/09/Circa-Survivor-2026-Week-3-Selections.pdf"
   }
