@@ -312,12 +312,12 @@ footer{border-top:1px solid var(--rule);margin-top:64px;padding-top:24px;font-si
 
 <h3>Holiday scarcity</h3>
 <p>This one is a rule of the contest rather than a matter of taste. The Thanksgiving week has only <strong>10 eligible teams</strong> and the Christmas week only <strong>8</strong>, and six teams are in both: Bills, Bears, Broncos, Packers, Rams and Eagles. If an entry burns its way through one of those pools, it will have no legal pick that week, which is an automatic loss.</p>
-<p>So any team that plays on a holiday week you have not reached yet gets docked, by how much of that pool they would take with them. It depends only on <em>eligibility</em> — a holiday underdog is still a body in the pool, so favorites and long shots are docked identically. The dock grows as the pool empties and becomes total on an entry's last eligible team, where DILI reads 0.00.</p>
+<p>So any team that plays on a holiday week you have not reached yet gets docked, by how much of that pool they would take with them. Each team counts by how likely it is to win that day, so spending a holiday favorite costs more than spending a holiday long shot. The dock grows as the pool thins and becomes total on an entry's last eligible team, where DILI reads 0.00.</p>
 
 <div class="example">
 <h4>WORKED EXAMPLE · Eagles, Week 2</h4>
-<p>EV <strong>0.96</strong>, second best on the board, and almost no future forfeit. But they are in both holiday pools, so they are docked twice: 0.92 for Thanksgiving and 0.91 for Christmas, which multiply to 0.84.</p>
-<p>DILI = 0.96 × 0.84 = <strong>0.81</strong>, sixth. They are a fine pick this week and an expensive one, and the column says so.</p>
+<p>EV <strong>0.96</strong>, second best on the board, and almost no future forfeit. But they are in both holiday pools, so they are docked twice, which multiplies out to about 0.87.</p>
+<p>DILI = 0.96 × 0.87 = <strong>0.83</strong>. They are a fine pick this week and an expensive one, and the column says so.</p>
 <p class="small">Later in the season this gets much sharper. With the Christmas pool down to two teams, the same dock is 0.63 rather than 0.91.</p>
 </div>
 

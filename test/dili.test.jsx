@@ -38,7 +38,9 @@ let h = holiday([]);
 ok("dual-eligible team docked twice", h.PHI.holidayParts.length === 2 && h.PHI.holiday < h.DAL.holiday, `PHI ${h.PHI.holiday.toFixed(3)} DAL ${h.DAL.holiday.toFixed(3)}`);
 ok("single-leg team docked once", h.DAL.holidayParts.length === 1 && h.DAL.holiday < 1 && h.SEA.holidayParts[0].id === "XM");
 ok("non-holiday team untouched", h.CIN.holiday === 1 && h.CIN.holidayParts.length === 0 && Math.abs(h.CIN.dili - h.CIN.ev / Math.pow(h.CIN.forfeit, h.CIN.diliK)) < 1e-12);
-ok("dock does not look at how good the team is that day", (() => { const a = holiday([]), b = holiday([]); return a.PHI.holiday === b.PHI.holiday && a.DAL.holiday === a.KC.holiday; })(), "same pool ⇒ same dock");
+// in the synthetic world DET is a home favorite on Thanksgiving and DAL a home underdog; both are Thanksgiving-only
+ok("a holiday stud is docked more than a holiday scrub in the same pool", (() => { const r = holiday([]); return r.DET.holidayParts[0].w > r.DAL.holidayParts[0].w && r.DET.holiday < r.DAL.holiday; })(), `DET ${holiday([]).DET.holiday.toFixed(3)} DAL ${holiday([]).DAL.holiday.toFixed(3)}`);
+ok("the pool is weighted by win chance, not counted", (() => { const r = holiday([]); const p = r.KC.holidayParts[0]; return p.N < p.n && p.N > 0; })(), (() => { const p = holiday([]).KC.holidayParts[0]; return `${p.n} bodies → ${p.N.toFixed(2)} weighted`; })());
 const thin = holiday(["BUF", "CHI", "DEN", "GB", "HOU", "SEA"]);      // XM pool down to PHI + LAR
 ok("dock sharpens as the pool empties", thin.PHI.holiday < h.PHI.holiday - 0.1, `${h.PHI.holiday.toFixed(3)} → ${thin.PHI.holiday.toFixed(3)}`);
 const last = holiday(["BUF", "CHI", "DEN", "GB", "HOU", "SEA", "LAR"]); // PHI is the only XM team left
