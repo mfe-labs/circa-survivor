@@ -699,8 +699,8 @@ const CSS = `
 .csp .maptabs > button.add { font-size:17px; font-weight:400; padding:0 12px; color:var(--ink3); }
 .csp .maptabs .tabact { margin-left:auto; display:flex; gap:6px; align-self:center; }
 .csp .strip .v.bad { color:var(--red); }
-.csp .picker { position:relative; display:inline-block; }
-.csp .picker .pk { display:inline-flex; align-items:center; gap:4px; padding:2px 4px; border:1px solid transparent; border-radius:6px; background:none; font:inherit; cursor:pointer; }
+.csp .picker { position:relative; display:inline-block; vertical-align:middle; }
+.csp .picker .pk { display:inline-flex; align-items:center; gap:4px; padding:0 3px; margin:-1px 0; vertical-align:middle; border:1px solid transparent; border-radius:6px; background:none; font:inherit; cursor:pointer; }
 .csp .picker .pk:hover { border-color:var(--rule2); background:var(--surface); }
 .csp .picker .pk.bad { border-color:var(--red); }
 .csp .picker .caret { font-size:10px; color:var(--ink3); }
