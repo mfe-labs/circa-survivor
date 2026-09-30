@@ -1218,9 +1218,8 @@ function MapView({ data, params, entry, status }) {
         <div className="fig"><div className="v sm">{res.weakest.map((p) => <span key={p.leg.id}>{p.leg.label === p.leg.id ? p.leg.id : "W" + p.leg.label} {pct0(p.win)}</span>)}</div><div className="k">weakest weeks, where the entry most likely dies</div></div>
         {res.nowLeg && <div className="fig"><div className="v sm">{res.free.length ? res.free.slice(0, 5).map((f) => <span key={f.team} title={`${f.team} ${pct0(f.win)} this week; on the map in ${Math.round(100 * f.onMap)}% of seasons`}>{chip(f.team, true)} {pct0(f.win)}</span>) : "none"}</div><div className="k">free to burn in {legLabel(res.nowLeg)}: favorites the map almost never needs</div></div>}
       </div>
-      <p className="lede">The best way to fill every week left with teams {entry.name} still has, from today's lines and ratings, re-solved on every refresh. It is a plan, not a pick list. First choice is how often the pick held up across {res.samples} versions of the season with future lines jiggled by their usual error. Backup is who covers the week if you spend the pick elsewhere. Picks you have entered only count once their week is completely over; until then the week stays in the plan.</p>
       <table className="dist maptab">
-        <thead><tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th>First choice</th><th>Backup</th><th>Why</th></tr></thead>
+        <thead><tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title={`How many of ${res.samples} seasons, with future lines jiggled by their usual error, picked this team for this week`}>First choice</th><th title="Who covers this week if the pick is spent elsewhere">Backup</th><th>Why</th></tr></thead>
         <tbody>
           {LEGS.map((l) => {
             const a = data.actuals[l.id], mine = entry.picks[l.id], p = planned[l.id];
