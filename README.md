@@ -46,7 +46,7 @@ GitHub Actions keep the lines, ratings and Circa results fresh. There is no serv
 | P% | Share of the field on that team: Circa's real number once posted, a fitted model before. |
 | Future | About how many strong-favorite weeks the team has left. |
 | EV | This week's value against the field, scaled so an average pick is 1.00. |
-| DILI | EV after paying for what you burn: future value and holiday scarcity. Per entry. |
+| DILI | EV ÷ forfeit, where the forfeit is what burning the team costs the entry's map of the rest of the season (holidays included), averaged over 96 noisy seasons. Per entry. |
 
 ## Editing (owner)
 1. Click **Sign in to edit** and paste a GitHub fine-grained personal access token
@@ -63,7 +63,7 @@ Every save is a git commit, so the full history of picks and results is in `git 
 ```
 npm install
 npm run dev      # http://localhost:5173 (viewer mode; sign in the same way to edit)
-npm test         # 5 suites: lines, model, ratings, circa, dili
+npm test         # 9 suites: lines, model, ratings, circa, dili, http, openleg, entries, holiday
 ```
 Data jobs: `ODDS_API_KEY=… node scripts/fetch-odds.mjs && ODDS_API_KEY=… node scripts/fit-ratings.mjs`, and
 `node scripts/fetch-actuals.mjs` (needs `pdftotext` from poppler).

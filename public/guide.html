@@ -202,7 +202,7 @@ footer{border-top:1px solid var(--rule);margin-top:64px;padding-top:24px;font-si
     <rect x="368" y="252" width="144" height="42" rx="9" fill="#EDF7EC" stroke="#2F8F3E" stroke-width="1.5"/>
     <text x="440" y="270" font-size="15" font-weight="600" fill="#1C5E2A">DILI</text>
     <text x="440" y="286" font-size="11.5" fill="#1C5E2A">should I pick them</text>
-    <text x="440" y="326" font-size="12" fill="#9A9DA6">plus a holiday-scarcity check</text>
+    <text x="440" y="326" font-size="12" fill="#9A9DA6">via the entry's map of the rest of the season</text>
   </g>
 </svg>
 <figcaption>Each column depends only on the ones to its left on the dashboard. DILI is the end of the chain.</figcaption>
@@ -287,39 +287,28 @@ footer{border-top:1px solid var(--rule);margin-top:64px;padding-top:24px;font-si
 <div class="note"><strong>If some games have no prices yet</strong>, EV is computed from the ones that do, and the column header shows <code>EV*</code> with the coverage in its tooltip. Below 75% of games priced, EV is left blank rather than shown misleadingly, because missing teams quietly flatter everyone else.</div>
 
 <h2 id="dili">DILI — "do I love it?"<span class="q">The one column that answers the actual question</span></h2>
-<p>EV is about this week only. It has no idea that the team you are about to burn is your best Week 11 option. DILI fixes that: it takes EV and then charges you for what you are giving up.</p>
+<p>EV is about this week only. It has no idea that the team you are about to burn is your best Week 16 option. DILI fixes that: it takes EV and then charges you for what you are giving up.</p>
 
 <div class="formula">
-  <code class="f">DILI = EV ÷ (future forfeit)<sup>k</sup> × (holiday scarcity)</code>
-  <span class="cap">Same scale as EV, so 1.00 still means "as good as an average entry does". DILI is calculated <strong>separately for each of your three entries</strong>, because it depends on which teams that entry has already used.</span>
+  <code class="f">DILI = EV ÷ forfeit</code>
+  <span class="cap">Same scale as EV, so 1.00 still means "as good as an average entry does". DILI is calculated <strong>separately for each of your entries</strong>, because it depends on which teams that entry has already used.</span>
 </div>
 
-<h3>The future forfeit</h3>
-<p>For every week ahead, the app asks: how much better is this team than a <em>realistic</em> alternative that week? The bar is the average of the three best other teams this entry still has available. Not the single best one, because you rarely take the single biggest favorite anyway, and nobody can predict who that will be months out. Beating the bar by a lot in several weeks makes a team expensive to spend. Each week is discounted by the chance you are even alive to use it, so a Week 15 edge matters less than a Week 4 edge.</p>
+<h3>Your map</h3>
+<p>For each entry the app works out a map: the best way to fill every remaining week, Thanksgiving and Christmas included, with a different team the entry still holds, so that the chance of winning all of them is as high as possible. You can see it in the Model details panel. The forfeit for a team is what the map loses when you burn that team and re-solve. Usually that is one swap: the week the team was going to cover falls to the next-best team left for it. A team that is not on your map costs almost nothing to spend.</p>
+<p>The holidays need no special rule. The map must put an eligible team on Thanksgiving (10 teams can play it) and on Christmas (8 can), so burning one of those teams is charged what it costs there, and burning your last eligible one makes the map impossible: DILI reads 0.00.</p>
 
 <div class="example">
-<h4>WORKED EXAMPLE · Ravens, Week 2</h4>
-<p>EV <strong>1.01</strong>, one of the best raw numbers on the board. But they beat a realistic alternative by a wide margin in several later weeks, which prices their forfeit at 1.07.</p>
-<p>DILI = 1.01 ÷ 1.07<sup>2.03</sup> = <strong>0.87</strong>. Good this week, too valuable to spend this week.</p>
+<h4>WORKED EXAMPLE · Ravens vs Vikings, Week 4</h4>
+<p>Both about 84% to win. Ravens EV <strong>1.10</strong> (18% of the field on them), Vikings EV <strong>1.00</strong> (63%).</p>
+<p>The Ravens are on this entry's map at Week 16, home to Cleveland at 83%. Burn them and the Chargers cover that week at 70%. Forfeit 1.13, so DILI = 1.10 ÷ 1.13 = <strong>0.97</strong>.</p>
+<p>The Vikings are not on the map. Forfeit 1.06, DILI = <strong>0.95</strong>. A coin flip, and the column says so.</p>
 </div>
 
-<h3>The exponent k</h3>
-<p>How hard that forfeit bites depends on two things you can reason about.</p>
-<ul>
-<li><strong>Your style</strong>, set in the Model details panel. <em>Now</em> leans on this week. <em>Future</em> saves the studs and takes more risk early. <em>Balanced</em> sits between. The dashboard ships on Future.</li>
-<li><strong>Where you are in the season.</strong> The penalty is heaviest through Week 6 and fades to almost nothing in the last three weeks, because at that point there is no later left to save anyone for.</li>
-</ul>
+<h3>Why the forfeit is not the whole 13 points</h3>
+<p>A Week 16 line projected in September is a guess. Measured over seven seasons, projections like these miss the closing spread by about 3 points a month out and 6 points by December. So the map is solved 96 times with every future line jiggled by that much, and the forfeit is the average. In some of those seasons someone else is the best Week 16 option and the Ravens cost nothing; in others they are the only good one and cost a lot. That is also why holding two decent Christmas teams is worth more than one great one.</p>
+<p>The next four weeks go one step further and use each team's projected EV rather than its win chance, by running the pick-popularity model forward. A team most of the field burns this week becomes a quiet, valuable pick later, and the map knows it.</p>
 
-<h3>Holiday scarcity</h3>
-<p>This one is a rule of the contest rather than a matter of taste. The Thanksgiving week has only <strong>10 eligible teams</strong> and the Christmas week only <strong>8</strong>, and six teams are in both: Bills, Bears, Broncos, Packers, Rams and Eagles. If an entry burns its way through one of those pools, it will have no legal pick that week, which is an automatic loss.</p>
-<p>So any team that plays on a holiday week you have not reached yet gets docked, by how much of that pool they would take with them. Each team counts by how likely it is to win that day, so spending a holiday favorite costs more than spending a holiday long shot. The dock grows as the pool thins and becomes total on an entry's last eligible team, where DILI reads 0.00.</p>
-
-<div class="example">
-<h4>WORKED EXAMPLE · Eagles, Week 2</h4>
-<p>EV <strong>0.96</strong>, second best on the board, and almost no future forfeit. But they are in both holiday pools, so they are docked twice, which multiplies out to about 0.87.</p>
-<p>DILI = 0.96 × 0.87 = <strong>0.83</strong>. They are a fine pick this week and an expensive one, and the column says so.</p>
-<p class="small">Later in the season this gets much sharper. With the Christmas pool down to two teams, the same dock is 0.63 rather than 0.91.</p>
-</div>
 
 <h2 id="grid">Reading the grid<span class="q">What every colour and mark means</span></h2>
 <p>The five number columns on the left describe the week you have selected. Everything to the right is the schedule: each team's opponent every week, with the point spread underneath.</p>
@@ -373,10 +362,9 @@ footer{border-top:1px solid var(--rule);margin-top:64px;padding-top:24px;font-si
 <h2 id="limits">What it can't do<span class="q">Worth knowing before you trust a number</span></h2>
 <ul>
 <li><strong>Distant weeks are rough.</strong> Anything more than a week or two out has no betting line yet, so it is projected from power ratings that are deliberately cautious. Treat a Future value of 4.4 as "several good weeks", not as a precise count.</li>
-<li><strong>It plans one week at a time.</strong> DILI assumes you will take a reasonable team each week afterwards. It does not solve the whole season's assignment of 20 picks to 32 teams at once.</li>
-<li><strong>It does not predict the crowd's future behaviour.</strong> Pick popularity is modelled for the week you are looking at, not for Week 14.</li>
+<li><strong>The map is a plan, not a prediction.</strong> It is re-solved every refresh from whatever the lines and ratings say that day, and it will change. Use it to see what a pick costs, not as a list of future picks.</li>
+<li><strong>It only guesses the crowd four weeks ahead.</strong> Pick popularity is projected forward that far; beyond it the field model drifts, so distant weeks use win chance alone.</li>
 <li><strong>Circa's own prices are not available.</strong> The contest is run by a sportsbook whose odds are not published through any free feed, so W% comes from five other books.</li>
-<li><strong>The two holiday pools are checked separately.</strong> If late in the season the only teams left in both pools were the same two, you could not cover both weeks, and the app would not notice.</li>
 <li><strong>It has no opinion about people.</strong> No injuries, no weather, no narratives. If a story matters, the betting market has already priced it, and if it has not, neither has this.</li>
 </ul>
 

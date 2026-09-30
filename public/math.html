@@ -57,7 +57,7 @@ footer{border-top:1px solid var(--rule);margin-top:56px;padding-top:20px;font-si
 
 <header class="top"><div class="wrap">
   <h1>The math</h1>
-  <p class="lede">The six models behind the dashboard. Each one: the formula, what the parts do, and a worked example from Week 2.</p>
+  <p class="lede">The six models behind the dashboard. Each one: the formula, what the parts do, and a worked example.</p>
   <div class="links">
     <a href="./">← Dashboard</a>
     <a href="guide.html">How it works</a>
@@ -141,40 +141,27 @@ EV   = raw ÷ (pick-weighted mean of raw), so the field averages 1.00</code>
 </div>
 
 <h2 id="d"><span class="n">6</span>DILI</h2>
-<p>EV, charged for what the pick costs you later. Calculated separately for each entry, since it depends on which teams that entry has already used.</p>
-<code class="f">DILI = EV ÷ B^k × H</code>
+<p>EV, charged for what the pick costs the rest of the season. Calculated separately for each entry, since it depends on which teams that entry has already used.</p>
+<code class="f">DILI = EV ÷ forfeit</code>
 
-<p><strong>B, the future forfeit.</strong> For every week after this one:</p>
-<code class="f">bar   = mean win chance of the entry's 3 best other available teams
-edge  = this team's win chance − bar        (skip if ≤ 0)
-s     = 0.8^(weeks away)
-B     = exp( Σ s × ln(1 + edge ÷ bar) )</code>
-<p>The bar is the top three rather than the best one, because you rarely take the single biggest favorite and nobody can identify it months out. The 0.8 discount is the chance of still being alive to use the week. B comes out slightly above 1, and reads as the fraction by which the team beats your realistic alternatives.</p>
+<p><strong>The map.</strong> Take every week still ahead, including Thanksgiving and Christmas. Fill each with a different team the entry still holds, so that the chance of winning all of them is as high as possible. That is the entry's map. Its value is the product of the win chances along it.</p>
+<code class="f">map value = win(week 5 team) × win(week 6 team) × … × win(week 18 team)
+forfeit   = map value with the team kept ÷ map value with the team burned</code>
+<p>A team that is not on the map costs nothing to spend. A team that is costs whatever the map loses when it is re-solved without it, which is usually one swap: the week it was going to cover falls to the next-best team left for that week. There is no separate holiday rule. The map has to put an eligible team on each holiday, so burning one is charged exactly what it costs there, and if burning it leaves nothing eligible, the map is dead and DILI is 0.</p>
 
-<p><strong>k, the exponent.</strong> Style multiplied by a calendar schedule.</p>
-<div class="tw"><table>
-<thead><tr><th>Style</th><th class="n">×</th><th>Weeks</th><th class="n">×</th></tr></thead>
-<tbody>
-<tr><td>Now</td><td class="n">0.5</td><td>1–6</td><td class="n">1.5</td></tr>
-<tr><td>Balanced</td><td class="n">1.0</td><td>7–11</td><td class="n">1.0</td></tr>
-<tr><td>Future (default)</td><td class="n">1.35</td><td>Thanksgiving–15</td><td class="n">0.6</td></tr>
-<tr><td></td><td class="n"></td><td>Christmas–18</td><td class="n">0.25</td></tr>
-</tbody></table></div>
-<p>Early weeks weight the future heavily; the last three barely at all, since there is nothing left to save for. In Week 2 on the Future style, k = 2.03, which turns a forfeit of 1.07 into about 13% off.</p>
+<p><strong>Uncertainty.</strong> A line for Week 16 projected in September is a guess. Across seven seasons of nflverse closing lines, ratings fit through Week 4 miss the closing spread by about 3 points a month out and 6 points by December. So the map is solved 96 times, each time with every future line jiggled by that much noise (1.5 points for a game whose line is already posted), and the forfeit is the average of the 96. A team that is the best choice for a distant week only half the time is charged about half. Two decent options for the same week are worth more than one great one, because in some of the 96 seasons the great one is not. The 96 draws are fixed, so the numbers do not wander between refreshes.</p>
 
-<p><strong>H, holiday scarcity.</strong> Thanksgiving has 10 eligible teams and Christmas 8, with six in both. An entry that runs out of eligible teams has no legal pick that week, which is a loss.</p>
-<code class="f">for each holiday week still ahead that the team plays in:
-    w = this team's projected win chance in that week
-    N = sum of w over every eligible team the entry still has
-    factor = ((N − w) ÷ N)^(0.5 × style)      and 0 when only one team is left
-H = the factors multiplied together</code>
-<p>Each team counts by how likely it is to win that day, so a 66% Rams is most of a usable option and a 34% Packers a third of one. Burning a stud costs more than burning a scrub, and the pool thins faster than a head count suggests: Thanksgiving's 10 teams weigh about 5, Christmas's 8 about 4. On the Future style that is roughly 9% for the best Thanksgiving team today and 5% for the worst. The zero on the last eligible team is a head count, since one bad team still prevents a forfeit.</p>
+<p><strong>The next four weeks</strong> use projected EV instead of win chance. The pick-popularity model is run forward: the field picks by the model, losers drop out, survivors no longer hold what they picked. A team most of the field burns this week is a quiet pick later, and the map gets credit for that.</p>
+
 <div class="eg">
-<h3>Week 2</h3>
-<p>Ravens: EV 1.01, B 1.074, k 2.03, no holiday exposure. 1.01 ÷ 1.074<sup>2.03</sup> = <strong>0.87</strong>.</p>
-<p>Eagles: EV 0.96, B 1.001, but in both holiday pools with about a 50% projection in each, so H comes to roughly 0.87. 0.96 × 0.87 = <strong>0.83</strong>.</p>
+<h3>Week 4</h3>
+<p>Entry has used DET, SF and KC.</p>
+<p>Ravens: EV 1.10. On the map at Week 16 vs CLE, 83%. Without them, LAC covers Week 16 at 70%, and across the 96 noisy seasons the map loses 12%: forfeit 1.13. 1.10 ÷ 1.13 = <strong>0.97</strong>.</p>
+<p>Vikings: EV 1.00. Not on the map at all; the only cost is the seasons in which they turn into a spot, forfeit 1.06. 1.00 ÷ 1.06 = <strong>0.95</strong>.</p>
+<p>Packers: EV 0.85. On the map at Week 15 vs MIA, 80%, and the map wants them for Christmas too. Forfeit 1.09, DILI <strong>0.77</strong>.</p>
 </div>
-<p>B's shape, k's schedule, the top-three bar and the holiday exponent are all chosen rather than fitted. There is no ground truth to fit them against, only outcomes over a season.</p>
+<p>The noise levels are measured; the 96 and the four-week horizon are chosen. There is no ground truth to fit the rest against, only outcomes over a season.</p>
+
 
 <footer>
   <p>Source for all of it: <a href="https://github.com/mfe-labs/circa-survivor">github.com/mfe-labs/circa-survivor</a>.</p>

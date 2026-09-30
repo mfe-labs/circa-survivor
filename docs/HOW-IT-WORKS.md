@@ -54,21 +54,26 @@ good each team is *this* season, so early-season ratings do not lean on last yea
 fetch fails, last season's market ratings regressed 40% toward average are the fallback.
 
 ## DILI ("do I love it?") — which team to actually pick this week
-`DILI = EV ÷ forfeit^k`, per entry.
-- **Forfeit**: for each later week, how much this team beats a *realistic* pick — the average of this entry's
-  top-3 other available teams that week — as a survival multiplier, weighted by the chance the entry is still
-  alive then (80%/week compounding). A team with no edge over a realistic pick later keeps its full EV.
-- **Holiday scarcity**: the Thanksgiving leg has only 10 eligible teams and Christmas only 8, and six (BUF, CHI,
-  DEN, GB, LAR, PHI) are in both. For each holiday leg still ahead that the team plays in, DILI is multiplied by
-  `((N−w)/N)^p` (p = 0.5 × style), where `w` is the team's projected win chance in that leg and `N` is the sum of
-  `w` over every eligible team the entry still has. A stud is dearer to spend than a scrub, and the pool thins
-  faster than a head count (10 Thanksgiving teams weigh ~5). Zero on the entry's last eligible team by head count,
-  since one bad team still prevents a forfeit.
-- **k = style × calendar**. Style: Now 0.5, Balanced 1.0, Future 1.35 (default; "save the studs, take risk
-  early"). Calendar: Weeks 1–6 ×1.5, 7–11 ×1.0, Thanksgiving–15 ×0.6, Christmas–18 ×0.25.
+`DILI = EV ÷ forfeit`, per entry.
+- **The map**: the best assignment of distinct teams the entry still holds to every remaining leg (Thanksgiving
+  and Christmas included), maximising the product of win chances (Hungarian algorithm, `bestMap`). Its value is
+  Σ log(win). The forfeit for a team is exp(map value with it kept − map value with it burned) ≥ 1. A team not on
+  the map costs ~nothing; a team on it costs the swap it forces. If burning it leaves a leg with no eligible team
+  (a holiday), the forfeit is ∞ and DILI 0. No separate holiday term any more.
+- **Uncertainty**: the map is solved `MAP_SAMPLES` = 96 times with every future win chance jiggled in z-space by
+  `noiseSd(lead)` = (3 + 0.25 × legs ahead) ÷ 13.5 (1.5 ÷ 13.5 when the game already has a market line), seeded
+  so it is deterministic and the same draws are used for every candidate; the forfeit is the average. The noise
+  levels come from seven seasons of nflverse closing lines vs ratings fit through Week 4 (residual SD ≈ 3 pts a
+  month out, ≈ 6 pts twelve weeks out). This prices flexibility: a team that is the best option in a distant week
+  only half the time is charged about half.
+- **Near legs**: the next `NEAR_LEGS` = 4 legs score each team by projected EV instead of win chance, from
+  `projectField`, which steps the popularity model forward (field picks by the model, losers drop out, survivors
+  stop holding what they picked). Further out the field model drifts, so plain win chance is used.
+- `computeDili` returns the entry's projected map (sample −1, no noise), shown in the Model details panel; each
+  team's row carries `forfeit`, `swaps` (what the projected map changes if the team is burned) and `dili`.
 - The entry's best five are green; the grid sorts by DILI by default. W% and EV also green their best five,
-  Future greens at 2.0 or below (cheap to burn), and P% turns red above 9.9% (a crowded pick). The tooltip shows the arithmetic and
-  the later weeks that contribute most. It is a per-week heuristic, not a full-season solve.
+  Future greens at 2.0 or below (cheap to burn), and P% turns red above 9.9% (a crowded pick). The tooltip shows the
+  arithmetic and the swap.
 
 ## Actuals tab
 Contest size + Circa's posted selections per leg. `fieldTimeline()` derives live entries, implied value per entry
