@@ -1,5 +1,5 @@
 // DILI: EV net of what the team is worth to the rest of the entry's season (the map); and the futures-market prior.
-import { buildData, computeEV, computeDili, fitParams, fvFor } from "../src/CircaSurvivorPlanner.jsx";
+import { buildData, computeEV, computeDili, planMap, fitParams, fvFor } from "../src/CircaSurvivorPlanner.jsx";
 import { priorFromFutures } from "../src/ratings.js";
 import { OPP, ALL_TEAMS, LEGS, TG_TEAMS, XM_TEAMS } from "../src/schedule.js";
 import picks from "../data/picks.json"; import actuals from "../data/actuals.json"; import odds from "../data/odds.json"; import ratings from "../data/ratings.json";
@@ -28,12 +28,29 @@ ok("burning a stud names the week it costs", rows.KC.swaps.length >= 1 && rows.K
 ok("deterministic", (() => { const { r } = run(); return homes.every((t) => Math.abs(r[t].dili - rows[t].dili) < 1e-12); })());
 
 // the map: one distinct team per remaining leg, each with a game that leg, holidays filled with eligible teams
-const later = LEGS.slice(LEGS.findIndex((l) => l.id === "W2") + 1);
-ok("map covers every later leg", map.length === later.length && map.every((p, i) => p.leg.id === later[i].id));
+const later = LEGS.filter((l) => l.id !== "W2");     // nothing is locked in the synthetic world, so W1 is still open too
+ok("map covers every open leg but the one being scored", map.length === later.length && map.every((p, i) => p.leg.id === later[i].id));
 ok("map uses distinct teams that play that week", new Set(map.map((p) => p.team)).size === map.length && map.every((p) => OPP[p.leg.id][p.team]));
 ok("map puts eligible teams on the holidays", map.every((p) => (p.leg.id !== "TG" || TG_TEAMS.has(p.team)) && (p.leg.id !== "XM" || XM_TEAMS.has(p.team))));
 ok("map spends the studs", ["KC", "BUF", "SF"].every((t) => map.some((p) => p.team === t)));
-ok("nothing left to map after the last week", (() => { const r = {}; for (const t of Object.keys(OPP.W18)) r[t] = { win: 0.6, pick: 1 / 16, fv: 0 }; computeEV("W18", r); const m = computeDili("W18", r, data, new Set(), P); return m.length === 0 && Object.keys(OPP.W18).every((t) => r[t].forfeit === 1 && r[t].dili === r[t].ev); })());
+const lockedTo = (n) => ({ ...data, actuals: Object.fromEntries(LEGS.slice(0, n).map((l) => [l.id, { picks: {}, won: [], lost: [], pending: [] }])) });
+ok("nothing left to map in the last week", (() => { const late = lockedTo(LEGS.length - 1); const r = {}; for (const t of Object.keys(OPP.W18)) r[t] = { win: 0.6, pick: 1 / 16, fv: 0 }; computeEV("W18", r); const m = computeDili("W18", r, late, new Set(), P); return m.length === 0 && Object.keys(OPP.W18).every((t) => r[t].forfeit === 1 && r[t].dili === r[t].ev); })());
+ok("locked weeks are not mapped", (() => { const d = lockedTo(3); const r = mk("W5"); const m = computeDili("W5", r, d, new Set(), P); return m.every((p) => !["W1", "W2", "W3", "W5"].includes(p.leg.id)) && m.some((p) => p.leg.id === "W4"); })());
+// the two fixes: this week's own pick is spent in the map shown, and weeks before the one viewed still get covered
+ok("this week's own pick is not reused later", (() => { const r = mk(); const m = computeDili("W2", r, data, new Set(), P, { W2: "KC" }); return m.length > 0 && m.every((p) => p.team !== "KC"); })());
+ok("viewing a later week still covers the open weeks before it, and a future pick stays put", (() => {
+  const r = mk("W6"); const m = computeDili("W6", r, data, new Set(["BUF"]), P, { W8: "BUF" });
+  return m.some((p) => p.leg.id === "W5") && !m.some((p) => p.leg.id === "W6" || p.leg.id === "W8") && m.every((p) => p.team !== "BUF"); })());
+// the Map tab's plan
+(() => {
+  const pl = planMap(data, { W1: "KC" }, P);
+  ok("plan fills every open leg without a pick", pl.plan.length === LEGS.length - 1 && pl.plan.every((p) => p.leg.id !== "W1" && p.team && p.team !== "KC"));
+  ok("plan counts are out of the sample size", pl.plan.every((p) => p.held >= 0 && p.held <= pl.samples));
+  ok("every week has a backup that differs from the pick", pl.plan.every((p) => p.backup && p.backup !== p.team && p.cost >= 1 - 1e-9));
+  ok("chance of winning out is the product along the map", Math.abs(pl.winOut - pl.plan.reduce((x, p) => x * p.win, 1)) < 1e-12 && pl.winOut > 0 && pl.winOut < 1);
+  ok("weakest weeks are the lowest win chances", pl.weakest.length === 3 && pl.weakest[0].win <= pl.weakest[2].win && pl.weakest[0].win === Math.min(...pl.plan.map((p) => p.win)));
+  ok("holiday rows know their pool", pl.plan.find((p) => p.leg.id === "TG").pool === 10 && pl.plan.find((p) => p.leg.id === "XM").pool === 8);
+})();
 
 // holidays fall out of the map: a team the map needs on Thanksgiving or Christmas is dearer than a spare
 const h = run().r;
@@ -56,11 +73,13 @@ ok("future value on a readable scale", fvFor("W2", "KC", data) < 18 && fvFor("W2
   const burned = new Set(Object.values(picks.entries[0].picks).filter((t) => t !== picks.entries[0].picks[leg]));
   const r = {}; for (const t of ALL_TEAMS) { const ln = real.legs[leg]?.lines[t]; r[t] = { win: ln?.win ?? null, pick: ln && ln.win > 0.5 ? 1 / 16 : 0, fv: fvFor(leg, t, real) }; }
   computeEV(leg, r);
-  const t0 = Date.now(); const m = computeDili(leg, r, real, burned, params); const ms = Date.now() - t0;
+  const t0 = Date.now(); const m = computeDili(leg, r, real, burned, params, picks.entries[0].picks); const ms = Date.now() - t0;
   const scored = Object.keys(OPP[leg]).filter((t) => r[t].dili != null);
   ok(`real ${leg}: every scored team is finite and ≤ EV`, scored.length > 0 && scored.every((t) => Number.isFinite(r[t].dili) && r[t].dili <= r[t].ev + 1e-12), `${scored.length} teams`);
   ok("real map skips burned teams", m.every((p) => !burned.has(p.team)));
   ok("fast enough for the browser", ms < 600, `${ms} ms`);
+  const t1 = Date.now(); const pl = planMap(real, picks.entries[0].picks, params); const ms2 = Date.now() - t1;
+  ok("real plan skips every used team and is quick", pl.plan.every((p) => !Object.values(picks.entries[0].picks).includes(p.team)) && ms2 < 1500, `${ms2} ms, ${pl.plan.length} weeks`);
 })();
 
 // futures prior: monotone in title odds, centered, on a points scale

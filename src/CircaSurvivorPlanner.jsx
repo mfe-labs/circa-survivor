@@ -269,7 +269,7 @@ const noiseSd = (lead, market) => (market ? 1.5 : 3 + 0.25 * lead) / MARGIN_SD;
 const probit = (p) => { let lo = -6, hi = 6; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (normCdf(m) < p) lo = m; else hi = m; } return (lo + hi) / 2; };
 function seededRng(seed) { return () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 const gauss = (r) => { let u = 0, v = 0; while (!u) u = r(); while (!v) v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
-// Field ownership and pick shares for the next NEAR_LEGS legs, stepping the popularity model forward: each leg
+// Field ownership and pick shares for legId and the next NEAR_LEGS legs, stepping the popularity model forward: each leg
 // the field picks by the model (Circa's actual shares for a locked week), the losers drop out, and survivors
 // who picked a team no longer hold it.
 function projectField(legId, data, params) {
@@ -287,7 +287,7 @@ function projectField(legId, data, params) {
         for (const t of Object.keys(OPP[l.id])) { const w = lineFor(l.id, t, data)?.win; if (w == null || w < 0.5) continue; const v = Math.pow(w, params.a) * Math.exp(-params.b * fvFor(l.id, t, data)) * av[t]; sc[t] = v; tot += v; }
         p = {}; for (const t in sc) p[t] = tot > 0 ? sc[t] / tot : 0;
       }
-      if (k > 0) out[l.id] = { p, av: { ...av } };
+      out[l.id] = { p, av: { ...av } };
       const S = Object.entries(p).reduce((s, [t, x]) => s + x * (lineFor(l.id, t, data)?.win ?? 0), 0);
       const nav = {};
       for (const t of ALL_TEAMS) { const pt = p[t] || 0, w = lineFor(l.id, t, data)?.win ?? 0; nav[t] = pt >= 1 || S <= 0 ? 0 : Math.max(0, Math.min(1, ((av[t] - pt) / (1 - pt)) * (S - pt * w) / S)); }
@@ -296,25 +296,29 @@ function projectField(legId, data, params) {
     return out;
   });
 }
-// Everything the map solver needs for the legs after legId, per team: win chance as a z-score, how much noise
-// to add for that horizon, the field-aware EV adjustment (log EV − log win, near legs only), and the shared
-// noise draws. Built once per data snapshot and reused for every candidate.
-function seasonTable(legId, data, params) {
-  return cached(data, "st", `${legId}|${params.a}|${params.b}`, () => {
-    const idx = LEGS.findIndex((l) => l.id === legId);
-    const legs = LEGS.slice(idx + 1), n = ALL_TEAMS.length;
-    const near = projectField(legId, data, params);
-    const z = legs.map(() => new Float64Array(n).fill(NaN)), sd = legs.map(() => new Float64Array(n)), ff = legs.map(() => new Float64Array(n));
-    legs.forEach((l, k) => {
+// Everything the map solver needs, for every leg not yet locked, per team: win chance as a z-score, how much
+// noise to add for how far off the leg is, the field-aware EV adjustment (log EV − log win, near legs only),
+// and the shared noise draws. "Now" is the first leg without Circa actuals. Built once per data snapshot.
+function seasonTable(data, params) {
+  return cached(data, "st", `${params.a}|${params.b}`, () => {
+    const n = ALL_TEAMS.length, first = LEGS.findIndex((l) => !data.actuals?.[l.id]);
+    const nowIdx = first < 0 ? LEGS.length : first;
+    const near = nowIdx < LEGS.length ? projectField(LEGS[nowIdx].id, data, params) : {};
+    const z = LEGS.map(() => new Float64Array(n).fill(NaN)), sd = LEGS.map(() => new Float64Array(n)), ff = LEGS.map(() => new Float64Array(n));
+    LEGS.forEach((l, k) => {
+      if (k < nowIdx) return;
       const rows = {}; for (const t of ALL_TEAMS) rows[t] = { win: lineFor(l.id, t, data)?.win ?? null, pick: near[l.id]?.p[t] || 0 };
       const useEv = !!near[l.id]; if (useEv) computeEV(l.id, rows);
-      ALL_TEAMS.forEach((t, i) => { const r = rows[t]; if (r.win == null) return; z[k][i] = probit(r.win); sd[k][i] = noiseSd(k + 1, !!marketLine(l.id, t, data)); ff[k][i] = useEv && r.ev != null ? Math.log(r.ev / r.win) : 0; });
+      ALL_TEAMS.forEach((t, i) => { const r = rows[t]; if (r.win == null) return; z[k][i] = probit(r.win); sd[k][i] = noiseSd(k - nowIdx + 1, !!marketLine(l.id, t, data)); ff[k][i] = useEv && r.ev != null ? Math.log(r.ev / r.win) : 0; });
     });
     const r = seededRng(20261), eps = [];
-    for (let s = 0; s < MAP_SAMPLES; s++) { const e = legs.map(() => new Float64Array(n)); for (let k = 0; k < legs.length; k++) for (let i = 0; i < n; i++) e[k][i] = gauss(r); eps.push(e); }
-    return { legs, z, sd, ff, eps };
+    for (let s = 0; s < MAP_SAMPLES; s++) { const e = LEGS.map(() => new Float64Array(n)); for (let k = nowIdx; k < LEGS.length; k++) for (let i = 0; i < n; i++) e[k][i] = gauss(r); eps.push(e); }
+    return { z, sd, ff, eps, nowIdx, near };
   });
 }
+// The legs an entry's map has to fill: every leg not yet locked that the entry has not already picked, except
+// the one being scored. A pick already entered for a later week stays put and its team is simply spent.
+const mapLegs = (tab, picks, except) => LEGS.map((l, k) => k).filter((k) => k >= tab.nowIdx && !picks?.[LEGS[k].id] && LEGS[k].id !== except);
 // Minimum-cost assignment of rows (legs) to columns (teams), rows ≤ columns. Returns the column for each row.
 function hungarian(cost) {
   const n = cost.length, m = cost[0].length, INF = 1e18;
@@ -332,40 +336,73 @@ function hungarian(cost) {
   const ans = new Int32Array(n); for (let j = 1; j <= m; j++) if (p[j]) ans[p[j] - 1] = j - 1;
   return ans;
 }
-// Best map for one season draw (sample −1 = the projection itself): value is Σ log(win × EV adjustment), and
-// a leg with nothing eligible is filled at MAP_FLOOR.
-function bestMap(tab, burnedIdx, sample) {
-  const { legs, z, sd, ff, eps } = tab, n = legs.length; if (!n) return { V: 0, path: [] };
+// Best map over the given legs for one season draw (sample −1 = the projection itself): value is
+// Σ log(win × EV adjustment), and a leg with nothing eligible is filled at MAP_FLOOR.
+function bestMap(tab, legIdx, burnedIdx, sample) {
+  const { z, sd, ff, eps } = tab; if (!legIdx.length) return { V: 0, path: [] };
   const teams = []; for (let i = 0; i < ALL_TEAMS.length; i++) if (!burnedIdx[i]) teams.push(i);
   const BIG = -Math.log(MAP_FLOOR);
-  const cost = legs.map((l, k) => teams.map((i) => { const zz = z[k][i]; if (Number.isNaN(zz)) return BIG; const w = normCdf(zz + (sample < 0 ? 0 : sd[k][i] * eps[sample][k][i])); return -(Math.log(w) + ff[k][i]); }));
-  const a = hungarian(cost); let V = 0; const path = [];
-  for (let k = 0; k < n; k++) { V -= cost[k][a[k]]; const dead = cost[k][a[k]] >= BIG; path.push({ leg: legs[k], team: dead ? null : ALL_TEAMS[teams[a[k]]], win: dead ? null : normCdf(z[k][teams[a[k]]]) }); }
+  const cost = legIdx.map((k) => teams.map((i) => { const zz = z[k][i]; if (Number.isNaN(zz)) return BIG; const w = normCdf(zz + (sample < 0 ? 0 : sd[k][i] * eps[sample][k][i])); return -(Math.log(w) + ff[k][i]); }));
+  const a = teams.length ? hungarian(cost) : null; let V = 0; const path = [];
+  legIdx.forEach((k, j) => {
+    const c = a ? cost[j][a[j]] : BIG, dead = !a || c >= BIG;
+    V -= c; path.push({ leg: LEGS[k], team: dead ? null : ALL_TEAMS[teams[a[j]]], win: dead ? null : normCdf(z[k][teams[a[j]]]) });
+  });
   return { V, path };
 }
+const deadLeg = (tab, legIdx, bidx) => { const k = legIdx.find((k) => !ALL_TEAMS.some((t, i) => !bidx[i] && !Number.isNaN(tab.z[k][i]))); return k == null ? null : LEGS[k]; };
+const withBurned = (bi, team) => { const b = bi.slice(); b[ALL_TEAMS.indexOf(team)] = true; return b; };
 // DILI = EV ÷ forfeit, where forfeit = (map value with the team kept) ÷ (map value with it burned), averaged over
 // the noisy seasons. Fills r.forfeit, r.swaps (what the projected map changes if the team is burned) and r.dili.
-// Returns the entry's projected map with nothing more burned.
-export function computeDili(legId, rows, data, burned, params = PRIOR) {
-  const tab = seasonTable(legId, data, params);
+// Returns the entry's projected map for the other open legs, with this leg's own pick (if any) spent.
+export function computeDili(legId, rows, data, burned, params = PRIOR, picks = {}) {
+  const tab = seasonTable(data, params);
+  const legIdx = mapLegs(tab, picks, legId);
   const bi = ALL_TEAMS.map((t) => burned.has(t));
-  const base = bestMap(tab, bi, -1);
-  let baseV = 0; for (let s = 0; s < MAP_SAMPLES; s++) baseV += bestMap(tab, bi, s).V; baseV /= MAP_SAMPLES;
-  const deadLeg = (bidx) => tab.legs.find((l, k) => !ALL_TEAMS.some((t, i) => !bidx[i] && !Number.isNaN(tab.z[k][i])));
-  const baseDead = deadLeg(bi);
+  const base = bestMap(tab, legIdx, bi, -1);
+  let baseV = 0; for (let s = 0; s < MAP_SAMPLES; s++) baseV += bestMap(tab, legIdx, bi, s).V; baseV /= MAP_SAMPLES;
+  const baseDead = deadLeg(tab, legIdx, bi);
   for (const t of Object.keys(OPP[legId])) {
     const r = rows[t];
     if (r.ev == null || burned.has(t)) { r.dili = null; continue; }
-    const bt = bi.slice(); bt[ALL_TEAMS.indexOf(t)] = true;
-    const dl = deadLeg(bt);
+    const bt = withBurned(bi, t);
+    const dl = deadLeg(tab, legIdx, bt);
     if (dl && !baseDead) { r.forfeit = Infinity; r.dili = 0; r.deadLeg = dl; r.swaps = []; continue; }
-    let V = 0; for (let s = 0; s < MAP_SAMPLES; s++) V += bestMap(tab, bt, s).V; V /= MAP_SAMPLES;
+    let V = 0; for (let s = 0; s < MAP_SAMPLES; s++) V += bestMap(tab, legIdx, bt, s).V; V /= MAP_SAMPLES;
     r.forfeit = 1 / Math.min(1, Math.exp(V - baseV));
     r.dili = r.ev / r.forfeit;
-    const alt = bestMap(tab, bt, -1);
+    const alt = bestMap(tab, legIdx, bt, -1);
     r.swaps = base.path.map((p, k) => (p.team !== alt.path[k].team ? { leg: p.leg, from: p.team, fromWin: p.win, to: alt.path[k].team, toWin: alt.path[k].win } : null)).filter(Boolean);
   }
-  return base.path;
+  const own = picks[legId];
+  return own && OPP[legId][own] ? bestMap(tab, legIdx, withBurned(bi, own), -1).path : base.path;
+}
+// The whole-season plan for one entry, for the Map tab. Every open leg without a pick is filled by the map;
+// for each: how often that team filled it across the noisy seasons, the backup (what fills the leg if the
+// team is burned) and what burning it costs, and field ownership for the near legs. Also which of this
+// week's favorites the map almost never needs (free to burn).
+export function planMap(data, picks, params = PRIOR) {
+  const tab = seasonTable(data, params);
+  const legIdx = mapLegs(tab, picks, null);
+  const bi = ALL_TEAMS.map((t) => Object.values(picks || {}).includes(t));
+  const base = bestMap(tab, legIdx, bi, -1);
+  const byLeg = legIdx.map(() => ({})), onMap = {};
+  for (let s = 0; s < MAP_SAMPLES; s++) bestMap(tab, legIdx, bi, s).path.forEach((p, j) => { if (!p.team) return; byLeg[j][p.team] = (byLeg[j][p.team] || 0) + 1; onMap[p.team] = (onMap[p.team] || 0) + 1; });
+  const plan = base.path.map((p, j) => {
+    const l = p.leg, near = tab.near[l.id];
+    const out = { ...p, held: p.team ? byLeg[j][p.team] || 0 : 0, samples: MAP_SAMPLES, others: Object.entries(byLeg[j]).filter(([t]) => t !== p.team).sort((a, b) => b[1] - a[1]).slice(0, 2) };
+    if (l.holiday) { const pool = [...(l.id === "TG" ? TG_TEAMS : XM_TEAMS)]; out.pool = pool.length; out.poolLeft = pool.filter((t) => !bi[ALL_TEAMS.indexOf(t)]).length; }
+    if (!p.team) return out;
+    const alt = bestMap(tab, legIdx, withBurned(bi, p.team), -1);
+    out.backup = alt.path[j].team; out.backupWin = alt.path[j].win; out.cost = Math.exp(base.V - alt.V);
+    if (near) { out.fieldHold = near.av[p.team]; out.fieldPick = near.p[p.team] || 0; }
+    return out;
+  });
+  const now = legIdx.length ? LEGS[legIdx[0]] : null;          // the next week this entry still has to pick
+  const free = !now ? [] : Object.keys(OPP[now.id]).filter((t) => !bi[ALL_TEAMS.indexOf(t)] && (lineFor(now.id, t, data)?.win ?? 0) >= 0.55 && (onMap[t] || 0) < 0.1 * MAP_SAMPLES)
+    .map((t) => ({ team: t, win: lineFor(now.id, t, data).win, onMap: (onMap[t] || 0) / MAP_SAMPLES })).sort((a, b) => b.win - a.win);
+  const live = plan.filter((p) => p.team);
+  return { plan, nowLeg: now || null, currentLeg: LEGS[tab.nowIdx] || null, winOut: live.length === plan.length ? live.reduce((x, p) => x * p.win, 1) : 0, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), free, samples: MAP_SAMPLES };
 }
 // share of the field still holding each team going into legId, from actual picks in earlier legs
 function availability(legId, data) { return cached(data, "av", legId, () => availabilityRaw(legId, data)); }
@@ -646,6 +683,21 @@ const CSS = `
 .csp .strip .fig:last-child { border-right:none; }
 .csp .strip .v { font-size:24px; font-weight:600; letter-spacing:-0.01em; line-height:1.1; }
 .csp .strip .v.up { color:var(--green-ink); }
+.csp .strip .v.sm { font-size:15px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; min-height:26px; }
+.csp .mapv .lede { font-size:12px; color:var(--ink2); line-height:1.5; max-width:84ch; margin:0 0 10px; }
+.csp .chip.sm { display:inline-block; min-width:34px; text-align:center; padding:1px 5px; border-radius:4px; font-weight:600; font-size:10.5px; }
+.csp .maptab td { height:auto; padding:7px 12px; vertical-align:top; white-space:nowrap; }
+.csp .maptab th:nth-child(-n+3), .csp .maptab td:nth-child(-n+3) { text-align:left; }
+.csp .maptab td:nth-child(2) { font-weight:400; }
+.csp .maptab td.why, .csp .maptab th:last-child { text-align:left; white-space:normal; color:var(--ink2); min-width:320px; line-height:1.45; }
+.csp .maptab td.weak { color:var(--amber); font-weight:600; }
+.csp .maptab td.mut { color:var(--ink3); }
+.csp .maptab tr.past td { color:var(--ink3); }
+.csp .maptab tr.past .chip { opacity:.55; }
+.csp .maptab tr.cur td { background:var(--sel-bg); }
+.csp .maptab tr.cur td:first-child { box-shadow:inset 3px 0 0 var(--sel); }
+.csp .maptab tr.hol td:first-child { color:var(--sand-ink); font-weight:600; }
+.csp .maptab tr.dead td { color:var(--red); }
 .csp .strip .k { font-size:12px; color:var(--ink2); margin-top:3px; }
 .csp .strip .actions { display:flex; flex-direction:column; gap:6px; justify-content:center; margin-left:auto; }
 .csp .legcard { border:1px solid var(--rule); border-radius:10px; margin-bottom:16px; overflow:hidden; }
@@ -788,10 +840,10 @@ export default function CircaSurvivorPlanner() {
   const burned = useMemo(() => new Set(Object.keys(usedBy).filter((t) => usedBy[t] !== legId)), [usedBy, legId]);
   const statsAll = useMemo(() => {
     const cur = computeStats(legId, data, params);
-    const map = computeDili(legId, cur.rows, data, burned, params);
+    const map = computeDili(legId, cur.rows, data, burned, params, entry.picks);
     const prev = data.prev ? computeStats(legId, data.prev, params) : null;
     if (prev) {
-      computeDili(legId, prev.rows, data.prev, burned, params);
+      computeDili(legId, prev.rows, data.prev, burned, params, entry.picks);
       for (const t of ALL_TEAMS) {
         const a = cur.rows[t], b = prev.rows[t];
         a.dEv = a.ev != null && b.ev != null ? a.ev - b.ev : null;
@@ -805,7 +857,7 @@ export default function CircaSurvivorPlanner() {
     for (const [key, flag] of [["dili", "diliTop"], ["ev", "evTop"], ["win", "winTop"]])
       ALL_TEAMS.filter((t) => cur.rows[t][key] != null).sort((a, b) => cur.rows[b][key] - cur.rows[a][key]).slice(0, TOP).forEach((t) => { cur.rows[t][flag] = true; });
     return { ...cur, map };
-  }, [data, legId, params, burned]);
+  }, [data, legId, params, burned, entry]);
   const { rows: stats, ev: evInfo } = statsAll;
   const prevAt = data.prev?.oddsAt || null;
   const evNote = evInfo.blanked ? `EV unavailable: only ${evInfo.covered}/${evInfo.gamesTotal} games have a Win % (need ${Math.round(EV_MIN_COVERAGE * 100)}%)`
@@ -913,9 +965,10 @@ export default function CircaSurvivorPlanner() {
           <h1>Circa Survivor 2026 <span className="ver">v{VERSION}</span></h1>
           <span className="views">
             <button className={view === "planner" ? "on" : ""} onClick={() => setView("planner")}>Planner</button>
+            <button className={view === "map" ? "on" : ""} onClick={() => setView("map")} title="This entry's plan for the rest of the season, week by week, with the reasons">Map</button>
             <button className={view === "actuals" ? "on" : ""} onClick={() => setView("actuals")}>Actuals</button>
           </span>
-          {view === "planner" && <span className="seg">
+          {view !== "actuals" && <span className="seg">
             {entries.map((e, i) => (
               <button key={i} className={(i === active ? "on" : "") + (standing[i]?.alive === false ? " out" : "")} onClick={() => setActive(i)}
                       title={standing[i]?.alive === false ? `Out in ${legLabel(standing[i].leg)} — still viewable, but no new picks` : "Plan this entry"}>
@@ -948,6 +1001,7 @@ export default function CircaSurvivorPlanner() {
           </div>
         </div>
       )}
+      {view === "map" && <MapView data={data} params={params} entry={entry} status={standing[active]} />}
       {view === "actuals" && <Actuals data={data} params={params} canEdit={canEdit} onSave={saveActuals} />}
       {view === "planner" && audit && <AuditPanel legId={legId} data={data} params={params} merr={merr} stats={stats} evNote={evNote} map={statsAll.map} />}
       {view === "planner" && <>
@@ -1124,6 +1178,74 @@ function AuditPanel({ legId, data, params, merr, stats, evNote, map }) {
 }
 
 // ---------- Actuals tab ----------
+// The Map tab: one entry's whole season, from the same map that prices DILI.
+const pct0 = (v) => (v == null ? "–" : Math.round(100 * v) + "%");
+function mapWhy(p) {
+  if (!p.team) return "Nothing eligible left for this week: it would be a forfeit.";
+  const parts = [];
+  const gap = p.backup ? p.win - p.backupWin : 1, loss = p.cost ? 1 - 1 / p.cost : 0;
+  const lossTxt = loss < 0.01 ? "under 1%" : Math.round(100 * loss) + "%";
+  if (!p.backup) parts.push(`No backup: spending ${p.team} elsewhere leaves nothing for this week.`);
+  else if (p.win < 0.6) parts.push(`Coin-flip week: ${pct0(p.win)} is the best left, ${p.backup} ${pct0(p.backupWin)} next.`);
+  else if (gap >= 0.08) parts.push(`Best spot left for ${p.team}. Without them this week falls to ${p.backup} at ${pct0(p.backupWin)}, and the map loses ${lossTxt}.`);
+  else if (loss < 0.02) parts.push(`Plenty of cover: spending ${p.team} elsewhere costs the map ${lossTxt}.`);
+  else parts.push(`${p.backup} covers it at ${pct0(p.backupWin)}; spending ${p.team} elsewhere costs the map ${lossTxt}.`);
+  if (p.pool) parts.push(`You still have ${p.poolLeft} of the ${p.pool} teams that can play it.`);
+  if (p.fieldHold != null && p.fieldHold < 0.5) parts.push("Most of the field has already used them, so it's a quiet pick.");
+  else if (p.fieldPick > 0.3) parts.push(`Crowded: about ${pct0(p.fieldPick)} of the field projected on them.`);
+  return parts.join(" ");
+}
+function MapView({ data, params, entry, status }) {
+  const res = useMemo(() => planMap(data, entry.picks, params), [data, entry, params]);
+  const chip = (t, sm) => <span className={"chip" + (sm ? " sm" : "")} style={{ background: COLORS[t][0], color: COLORS[t][1] }}>{t}</span>;
+  const game = (legId, t) => {
+    const g = OPP[legId]?.[t]; if (!g) return "";
+    const ln = lineFor(legId, t, data);
+    return `${g.home ? "vs" : g.neutral ? "n" : "@"} ${g.opp}${ln?.spread != null ? ` ${ln.spread > 0 ? "+" : ""}${ln.spread}` : ""}`;
+  };
+  if (status && !status.alive) return <div className="act mapv"><p className="lede">{entry.name} is out ({legLabel(status.leg)}). Nothing left to map.</p></div>;
+  const planned = Object.fromEntries(res.plan.map((p) => [p.leg.id, p]));
+  const nowId = res.currentLeg?.id;
+  return (
+    <div className="act mapv">
+      <div className="strip">
+        <div className="fig"><div className="v">{res.winOut ? (100 * res.winOut).toFixed(1) + "%" : "–"}</div><div className="k">chance of winning every week on this map</div></div>
+        <div className="fig"><div className="v sm">{res.weakest.map((p) => <span key={p.leg.id}>{p.leg.label === p.leg.id ? p.leg.id : "W" + p.leg.label} {pct0(p.win)}</span>)}</div><div className="k">weakest weeks, where the entry most likely dies</div></div>
+        {res.nowLeg && <div className="fig"><div className="v sm">{res.free.length ? res.free.slice(0, 5).map((f) => <span key={f.team} title={`${f.team} ${pct0(f.win)} this week; on the map in ${Math.round(100 * f.onMap)}% of seasons`}>{chip(f.team, true)} {pct0(f.win)}</span>) : "none"}</div><div className="k">free to burn in {legLabel(res.nowLeg)}: favorites the map almost never needs</div></div>}
+      </div>
+      <p className="lede">The best way to fill every week left with teams {entry.name} still has, from today's lines and ratings, re-solved on every refresh. It is a plan, not a pick list. First choice is how often the pick held up across {res.samples} versions of the season with future lines jiggled by their usual error. Backup is who covers the week if you spend the pick elsewhere. Enter a future pick on the Planner and the rest of the map re-solves around it.</p>
+      <table className="dist maptab">
+        <thead><tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th>First choice</th><th>Backup</th><th>Why</th></tr></thead>
+        <tbody>
+          {LEGS.map((l) => {
+            const a = data.actuals[l.id], mine = entry.picks[l.id], p = planned[l.id];
+            if (a) {
+              const res2 = !mine ? "No pick" : a.won.includes(mine) ? "Won" : a.lost.includes(mine) ? "Lost" : "In progress";
+              return <tr key={l.id} className="past"><td>{legLabel(l)}</td><td>{mine ? chip(mine) : "–"}</td><td>{mine ? game(l.id, mine) : ""}</td><td></td><td></td><td></td><td className="why">{res2}</td></tr>;
+            }
+            if (mine) {
+              const w = lineFor(l.id, mine, data)?.win;
+              return <tr key={l.id} className={"mine" + (l.id === nowId ? " cur" : "")}><td>{legLabel(l)}</td><td>{chip(mine)}</td><td>{game(l.id, mine)}</td><td>{pct0(w)}</td><td className="mut">locked</td><td></td><td className="why">Your pick. The rest of the map works around it.</td></tr>;
+            }
+            if (!p) return null;
+            const alts = p.others.map(([t, n]) => `${t} ${n}`).join(", ");
+            return (
+              <tr key={l.id} className={(l.holiday ? "hol" : "") + (l.id === nowId ? " cur" : "") + (p.team ? "" : " dead")}>
+                <td>{legLabel(l)}</td>
+                <td>{p.team ? chip(p.team) : "–"}</td>
+                <td>{p.team ? game(l.id, p.team) : ""}</td>
+                <td className={p.win != null && p.win < 0.6 ? "weak" : ""}>{pct0(p.win)}</td>
+                <td title={alts ? `Also first choice: ${alts} (of ${p.samples})` : ""}>{p.team ? `${p.held}/${p.samples}` : ""}</td>
+                <td>{p.backup ? <>{chip(p.backup, true)} {pct0(p.backupWin)}</> : "–"}</td>
+                <td className="why">{mapWhy(p)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 function Actuals({ data, params, canEdit, onSave }) {
   const { entries, contest, actuals } = data;
   const tl = fieldTimeline(data);

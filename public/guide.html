@@ -130,6 +130,7 @@ footer{border-top:1px solid var(--rule);margin-top:64px;padding-top:24px;font-si
     <li><a href="#f">Future — weeks left</a></li>
     <li><a href="#ev">EV — is it good?</a></li>
     <li><a href="#dili">DILI — should I?</a></li>
+    <li><a href="#map">The Map tab</a></li>
     <li><a href="#grid">Reading the grid</a></li>
     <li><a href="#actuals">The Actuals tab</a></li>
     <li><a href="#fresh">Staying current</a></li>
@@ -295,7 +296,7 @@ footer{border-top:1px solid var(--rule);margin-top:64px;padding-top:24px;font-si
 </div>
 
 <h3>Your map</h3>
-<p>For each entry the app works out a map: the best way to fill every remaining week, Thanksgiving and Christmas included, with a different team the entry still holds, so that the chance of winning all of them is as high as possible. You can see it in the Model details panel. The forfeit for a team is what the map loses when you burn that team and re-solve. Usually that is one swap: the week the team was going to cover falls to the next-best team left for it. A team that is not on your map costs almost nothing to spend.</p>
+<p>For each entry the app works out a map: the best way to fill every remaining week, Thanksgiving and Christmas included, with a different team the entry still holds, so that the chance of winning all of them is as high as possible. The Map tab shows it week by week. The forfeit for a team is what the map loses when you burn that team and re-solve. Usually that is one swap: the week the team was going to cover falls to the next-best team left for it. A team that is not on your map costs almost nothing to spend.</p>
 <p>The holidays need no special rule. The map must put an eligible team on Thanksgiving (10 teams can play it) and on Christmas (8 can), so burning one of those teams is charged what it costs there, and burning your last eligible one makes the map impossible: DILI reads 0.00.</p>
 
 <div class="example">
@@ -309,6 +310,11 @@ footer{border-top:1px solid var(--rule);margin-top:64px;padding-top:24px;font-si
 <p>A Week 16 line projected in September is a guess. Measured over seven seasons, projections like these miss the closing spread by about 3 points a month out and 6 points by December. So the map is solved 96 times with every future line jiggled by that much, and the forfeit is the average. In some of those seasons someone else is the best Week 16 option and the Ravens cost nothing; in others they are the only good one and cost a lot. That is also why holding two decent Christmas teams is worth more than one great one.</p>
 <p>The next four weeks go one step further and use each team's projected EV rather than its win chance, by running the pick-popularity model forward. A team most of the field burns this week becomes a quiet, valuable pick later, and the map knows it.</p>
 
+
+<h2 id="map">The Map tab<span class="q">The rest of the season, one row per week</span></h2>
+<p>Pick an entry and the Map tab lays out its whole season. Weeks already played are grayed out with the result. Every week still to come shows the team the map would use, the game and win chance, how often that team was the first choice across the 96 jiggled seasons, the backup that covers the week if you spend the pick somewhere else, and a one-line reason.</p>
+<p>Across the top: the chance of winning every week on the map, the three weakest weeks (where the entry most likely dies), and which favorites in the next week you have to pick are free to burn because the map almost never needs them.</p>
+<p>Enter a pick for a future week on the Planner and it shows as locked; the rest of the map re-solves around it. That is the quickest way to test an idea like "save the Ravens for Week 16 and take the Packers now".</p>
 
 <h2 id="grid">Reading the grid<span class="q">What every colour and mark means</span></h2>
 <p>The five number columns on the left describe the week you have selected. Everything to the right is the schedule: each team's opponent every week, with the point spread underneath.</p>

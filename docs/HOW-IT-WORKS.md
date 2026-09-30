@@ -69,6 +69,11 @@ fetch fails, last season's market ratings regressed 40% toward average are the f
 - **Near legs**: the next `NEAR_LEGS` = 4 legs score each team by projected EV instead of win chance, from
   `projectField`, which steps the popularity model forward (field picks by the model, losers drop out, survivors
   stop holding what they picked). Further out the field model drifts, so plain win chance is used.
+- The map fills every leg not yet locked that the entry has not picked, except the leg being scored; picks already
+  entered for later weeks stay put. The map returned for display treats this leg's own pick as spent.
+- `planMap(data, picks, params)` feeds the Map tab: the projected map, per-leg first-choice counts across the 96
+  draws, the backup (what fills the leg after burning the pick) and cost, field ownership for near legs, the
+  chance of winning out, the three weakest legs, and favorites in the next unpicked leg on the map <10% of draws.
 - `computeDili` returns the entry's projected map (sample −1, no noise), shown in the Model details panel; each
   team's row carries `forfeit`, `swaps` (what the projected map changes if the team is burned) and `dili`.
 - The entry's best five are green; the grid sorts by DILI by default. W% and EV also green their best five,
