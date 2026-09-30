@@ -689,6 +689,7 @@ const CSS = `
 .csp .strip .v { font-size:24px; font-weight:600; letter-spacing:-0.01em; line-height:1.1; }
 .csp .strip .v.up { color:var(--green-ink); }
 .csp .strip .v.sm { font-size:15px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; min-height:26px; }
+.csp .strip .v.sm .mut { color:var(--ink3); font-weight:500; }
 .csp .mapv .lede { font-size:12px; color:var(--ink2); line-height:1.5; max-width:84ch; margin:0 0 10px; }
 .csp .chip.sm { display:inline-block; min-width:34px; text-align:center; padding:1px 5px; border-radius:4px; font-weight:600; font-size:10.5px; }
 .csp .dist.maptab td, .csp .dist.maptab td:first-child { height:auto; padding:7px 12px; vertical-align:middle; white-space:nowrap; text-align:center; }
@@ -1217,7 +1218,7 @@ function MapView({ data, params, entry, status }) {
       <div className="strip">
         <div className="fig"><div className="v">{res.winOut ? (100 * res.winOut).toFixed(1) + "%" : "–"}</div><div className="k">chance of winning every week on this map</div></div>
         <div className="fig"><div className="v sm">{res.weakest.map((p) => <span key={p.leg.id}>{p.leg.label === p.leg.id ? p.leg.id : "W" + p.leg.label} {pct0(p.win)}</span>)}</div><div className="k">weakest weeks, where the entry most likely dies</div></div>
-        {res.nowLeg && <div className="fig"><div className="v sm">{res.free.length ? res.free.map((f) => <span key={f.team} title={`${f.team} is ${pct0(f.win)} to win this week and gets used in a later week in ${Math.round(100 * f.onMap)}% of the ${res.samples} seasons`}>{chip(f.team, true)} {pct0(f.onMap)}</span>) : "none"}</div><div className="k">cheapest to burn in {legLabel(res.nowLeg)}: favorites and how often a later week needs them</div></div>}
+        {res.nowLeg && <div className="fig"><div className="v sm">{res.free.length ? res.free.map((f) => <span key={f.team} title={`${f.team} is ${pct0(f.win)} to win this week and gets used in a later week in ${Math.round(100 * f.onMap)}% of the ${res.samples} seasons`}>{chip(f.team, true)} <span className="mut">({pct0(f.win)})</span> {pct0(f.onMap)}</span>) : "none"}</div><div className="k">cheapest to burn in {legLabel(res.nowLeg)}: team (win %) and the chance a later week needs them</div></div>}
       </div>
       <table className="dist maptab">
         <thead><tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title={`How many of ${res.samples} seasons, with future lines jiggled by their usual error, picked this team for this week`}>First choice</th><th title="Who covers this week if the pick is spent elsewhere">Backup</th><th>Why</th></tr></thead>
