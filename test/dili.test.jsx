@@ -1,5 +1,5 @@
 // DILI: EV net of what the team is worth to the rest of the entry's season (the map); and the futures-market prior.
-import { buildData, computeEV, computeDili, planMap, fitParams, fvFor } from "../src/CircaSurvivorPlanner.jsx";
+import { buildData, computeEV, computeDili, planMap, spentTeams, fitParams, fvFor } from "../src/CircaSurvivorPlanner.jsx";
 import { priorFromFutures } from "../src/ratings.js";
 import { OPP, ALL_TEAMS, LEGS, TG_TEAMS, XM_TEAMS } from "../src/schedule.js";
 import picks from "../data/picks.json"; import actuals from "../data/actuals.json"; import odds from "../data/odds.json"; import ratings from "../data/ratings.json";
@@ -36,15 +36,15 @@ ok("map spends the studs", ["KC", "BUF", "SF"].every((t) => map.some((p) => p.te
 const lockedTo = (n) => ({ ...data, actuals: Object.fromEntries(LEGS.slice(0, n).map((l) => [l.id, { picks: {}, won: [], lost: [], pending: [] }])) });
 ok("nothing left to map in the last week", (() => { const late = lockedTo(LEGS.length - 1); const r = {}; for (const t of Object.keys(OPP.W18)) r[t] = { win: 0.6, pick: 1 / 16, fv: 0 }; computeEV("W18", r); const m = computeDili("W18", r, late, new Set(), P); return m.length === 0 && Object.keys(OPP.W18).every((t) => r[t].forfeit === 1 && r[t].dili === r[t].ev); })());
 ok("locked weeks are not mapped", (() => { const d = lockedTo(3); const r = mk("W5"); const m = computeDili("W5", r, d, new Set(), P); return m.every((p) => !["W1", "W2", "W3", "W5"].includes(p.leg.id)) && m.some((p) => p.leg.id === "W4"); })());
-// the two fixes: this week's own pick is spent in the map shown, and weeks before the one viewed still get covered
-ok("this week's own pick is not reused later", (() => { const r = mk(); const m = computeDili("W2", r, data, new Set(), P, { W2: "KC" }); return m.length > 0 && m.every((p) => p.team !== "KC"); })());
-ok("viewing a later week still covers the open weeks before it, and a future pick stays put", (() => {
-  const r = mk("W6"); const m = computeDili("W6", r, data, new Set(["BUF"]), P, { W8: "BUF" });
-  return m.some((p) => p.leg.id === "W5") && !m.some((p) => p.leg.id === "W6" || p.leg.id === "W8") && m.every((p) => p.team !== "BUF"); })());
+// picks in weeks not completely over are soft: they neither spend a team nor fix a week
+const fin = (n, pend = []) => ({ ...data, actuals: Object.fromEntries(LEGS.slice(0, n).map((l, i) => [l.id, { picks: {}, won: [], lost: [], pending: i === n - 1 ? pend : [] }])) });
+ok("only finished weeks spend a team", (() => { const sp = spentTeams(fin(3, ["X"]), { W1: "KC", W2: "BUF", W3: "SF", W4: "PHI" }); return sp.has("KC") && sp.has("BUF") && !sp.has("SF") && !sp.has("PHI"); })());
+ok("a week still being played stays in the plan", (() => { const pl = planMap(fin(3, ["X"]), { W1: "KC", W2: "BUF", W3: "SF", W4: "PHI" }, P); return pl.plan[0].leg.id === "W3" && pl.plan.every((p) => p.team !== "KC" && p.team !== "BUF") && pl.plan.some((p) => p.team === "SF"); })());
+ok("viewing a later week still covers the open weeks before it", (() => { const m = computeDili("W6", mk("W6"), data, new Set(), P); return m.some((p) => p.leg.id === "W5") && !m.some((p) => p.leg.id === "W6"); })());
 // the Map tab's plan
 (() => {
   const pl = planMap(data, { W1: "KC" }, P);
-  ok("plan fills every open leg without a pick", pl.plan.length === LEGS.length - 1 && pl.plan.every((p) => p.leg.id !== "W1" && p.team && p.team !== "KC"));
+  ok("plan fills every week not over, soft picks ignored", pl.plan.length === LEGS.length && pl.plan.every((p) => p.team) && pl.plan.some((p) => p.team === "KC"));
   ok("plan counts are out of the sample size", pl.plan.every((p) => p.held >= 0 && p.held <= pl.samples));
   ok("every week has a backup that differs from the pick", pl.plan.every((p) => p.backup && p.backup !== p.team && p.cost >= 1 - 1e-9));
   ok("chance of winning out is the product along the map", Math.abs(pl.winOut - pl.plan.reduce((x, p) => x * p.win, 1)) < 1e-12 && pl.winOut > 0 && pl.winOut < 1);
@@ -70,16 +70,16 @@ ok("future value on a readable scale", fvFor("W2", "KC", data) < 18 && fvFor("W2
   const real = buildData({ picks, actuals, odds, ratings });
   const params = fitParams(real);
   const leg = LEGS.find((l) => !real.actuals[l.id])?.id || "W18";
-  const burned = new Set(Object.values(picks.entries[0].picks).filter((t) => t !== picks.entries[0].picks[leg]));
+  const burned = spentTeams(real, picks.entries[0].picks); burned.delete(picks.entries[0].picks[leg]);
   const r = {}; for (const t of ALL_TEAMS) { const ln = real.legs[leg]?.lines[t]; r[t] = { win: ln?.win ?? null, pick: ln && ln.win > 0.5 ? 1 / 16 : 0, fv: fvFor(leg, t, real) }; }
   computeEV(leg, r);
-  const t0 = Date.now(); const m = computeDili(leg, r, real, burned, params, picks.entries[0].picks); const ms = Date.now() - t0;
+  const t0 = Date.now(); const m = computeDili(leg, r, real, burned, params); const ms = Date.now() - t0;
   const scored = Object.keys(OPP[leg]).filter((t) => r[t].dili != null);
   ok(`real ${leg}: every scored team is finite and ≤ EV`, scored.length > 0 && scored.every((t) => Number.isFinite(r[t].dili) && r[t].dili <= r[t].ev + 1e-12), `${scored.length} teams`);
-  ok("real map skips burned teams", m.every((p) => !burned.has(p.team)));
+  ok("real map skips spent teams", m.every((p) => !burned.has(p.team)));
   ok("fast enough for the browser", ms < 600, `${ms} ms`);
   const t1 = Date.now(); const pl = planMap(real, picks.entries[0].picks, params); const ms2 = Date.now() - t1;
-  ok("real plan skips every used team and is quick", pl.plan.every((p) => !Object.values(picks.entries[0].picks).includes(p.team)) && ms2 < 1500, `${ms2} ms, ${pl.plan.length} weeks`);
+  ok("real plan skips every spent team and is quick", pl.plan.every((p) => !spentTeams(real, picks.entries[0].picks).has(p.team)) && ms2 < 1500, `${ms2} ms, ${pl.plan.length} weeks`);
 })();
 
 // futures prior: monotone in title odds, centered, on a points scale
