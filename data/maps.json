@@ -1,3 +1,28 @@
 {
- "maps": []
+ "maps": [
+  {
+   "id": "muoba7ob",
+   "name": "Jeremy Week 3",
+   "entry": "CIRCAmcised-2",
+   "picks": {
+    "W4": "MIN",
+    "W5": "CIN",
+    "W6": "PHI",
+    "W7": "HOU",
+    "W8": "PIT",
+    "W9": "NO",
+    "W10": "IND",
+    "W11": "BUF",
+    "TG": "LAR",
+    "W12": "JAX",
+    "W13": "DEN",
+    "W14": "SEA",
+    "W15": "GB",
+    "XM": "CHI",
+    "W16": "BAL",
+    "W17": "DAL",
+    "W18": "NE"
+   }
+  }
+ ]
 }
