@@ -384,14 +384,14 @@ export function computeDili(legId, rows, data, burned, params = PRIOR) {
 // The whole-season plan for one entry, for the Map tab. Every open leg without a pick is filled by the map;
 // for each: how often that team filled it across the noisy seasons, the backup (what fills the leg if the
 // team is burned) and what burning it costs, and field ownership for the near legs. Also which of this
-// week's favorites the map almost never needs (free to burn).
+// week's favorites the map needs least in later weeks (cheapest to burn).
 export function planMap(data, picks, params = PRIOR) {
   const tab = seasonTable(data, params);
   const legIdx = mapLegs(tab, null);
   const spent = spentTeams(data, picks), bi = ALL_TEAMS.map((t) => spent.has(t));
   const base = bestMap(tab, legIdx, bi, -1);
   const byLeg = legIdx.map(() => ({})), onMap = {};
-  // onMap counts use in any week after the first one mapped, which is the week "free to burn" is about
+  // onMap counts use in any week after the first one mapped, which is the week "cheapest to burn" is about
   for (let s = 0; s < MAP_SAMPLES; s++) bestMap(tab, legIdx, bi, s).path.forEach((p, j) => { if (!p.team) return; byLeg[j][p.team] = (byLeg[j][p.team] || 0) + 1; if (j > 0) onMap[p.team] = (onMap[p.team] || 0) + 1; });
   const plan = base.path.map((p, j) => {
     const l = p.leg, near = tab.near[l.id];
@@ -404,8 +404,8 @@ export function planMap(data, picks, params = PRIOR) {
     return out;
   });
   const now = legIdx.length ? LEGS[legIdx[0]] : null;
-  const free = !now ? [] : Object.keys(OPP[now.id]).filter((t) => !bi[ALL_TEAMS.indexOf(t)] && (lineFor(now.id, t, data)?.win ?? 0) >= 0.55 && (onMap[t] || 0) < 0.1 * MAP_SAMPLES)
-    .map((t) => ({ team: t, win: lineFor(now.id, t, data).win, onMap: (onMap[t] || 0) / MAP_SAMPLES })).sort((a, b) => b.win - a.win);
+  const free = !now ? [] : Object.keys(OPP[now.id]).filter((t) => !bi[ALL_TEAMS.indexOf(t)] && (lineFor(now.id, t, data)?.win ?? 0) >= 0.55 )
+    .map((t) => ({ team: t, win: lineFor(now.id, t, data).win, onMap: (onMap[t] || 0) / MAP_SAMPLES })).sort((a, b) => a.onMap - b.onMap || b.win - a.win).slice(0, 3);
   const live = plan.filter((p) => p.team);
   return { plan, nowLeg: now || null, currentLeg: LEGS[tab.nowIdx] || null, winOut: live.length === plan.length ? live.reduce((x, p) => x * p.win, 1) : 0, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), free, samples: MAP_SAMPLES };
 }
@@ -1217,7 +1217,7 @@ function MapView({ data, params, entry, status }) {
       <div className="strip">
         <div className="fig"><div className="v">{res.winOut ? (100 * res.winOut).toFixed(1) + "%" : "–"}</div><div className="k">chance of winning every week on this map</div></div>
         <div className="fig"><div className="v sm">{res.weakest.map((p) => <span key={p.leg.id}>{p.leg.label === p.leg.id ? p.leg.id : "W" + p.leg.label} {pct0(p.win)}</span>)}</div><div className="k">weakest weeks, where the entry most likely dies</div></div>
-        {res.nowLeg && <div className="fig"><div className="v sm">{res.free.length ? res.free.slice(0, 5).map((f) => <span key={f.team} title={`${f.team} ${pct0(f.win)} this week; on the map in ${Math.round(100 * f.onMap)}% of seasons`}>{chip(f.team, true)} {pct0(f.win)}</span>) : "none"}</div><div className="k">free to burn in {legLabel(res.nowLeg)}: favorites the map almost never needs</div></div>}
+        {res.nowLeg && <div className="fig"><div className="v sm">{res.free.length ? res.free.map((f) => <span key={f.team} title={`${f.team} is ${pct0(f.win)} to win this week and gets used in a later week in ${Math.round(100 * f.onMap)}% of the ${res.samples} seasons`}>{chip(f.team, true)} {pct0(f.onMap)}</span>) : "none"}</div><div className="k">cheapest to burn in {legLabel(res.nowLeg)}: favorites and how often a later week needs them</div></div>}
       </div>
       <table className="dist maptab">
         <thead><tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title={`How many of ${res.samples} seasons, with future lines jiggled by their usual error, picked this team for this week`}>First choice</th><th title="Who covers this week if the pick is spent elsewhere">Backup</th><th>Why</th></tr></thead>

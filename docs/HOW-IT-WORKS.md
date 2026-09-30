@@ -73,7 +73,8 @@ fetch fails, last season's market ratings regressed 40% toward average are the f
   Picks in those weeks are soft: they neither spend a team nor fix a week (spentTeams = picks in finished weeks).
 - `planMap(data, picks, params)` feeds the Map tab: the projected map, per-leg first-choice counts across the 96
   draws, the backup (what fills the leg after burning the pick) and cost, field ownership for near legs, the
-  chance of winning out, the three weakest legs, and favorites in the next unpicked leg on the map <10% of draws.
+  chance of winning out, the three weakest legs, and the three favorites (55%+) in the current leg used least often in
+  later legs across the draws (cheapest to burn).
 - `computeDili` returns the entry's projected map (sample −1, no noise), shown in the Model details panel; each
   team's row carries `forfeit`, `swaps` (what the projected map changes if the team is burned) and `dili`.
 - The entry's best five are green; the grid sorts by DILI by default. W% and EV also green their best five,
