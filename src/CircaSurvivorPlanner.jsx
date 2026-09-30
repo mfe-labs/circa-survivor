@@ -391,7 +391,8 @@ export function planMap(data, picks, params = PRIOR) {
   const spent = spentTeams(data, picks), bi = ALL_TEAMS.map((t) => spent.has(t));
   const base = bestMap(tab, legIdx, bi, -1);
   const byLeg = legIdx.map(() => ({})), onMap = {};
-  for (let s = 0; s < MAP_SAMPLES; s++) bestMap(tab, legIdx, bi, s).path.forEach((p, j) => { if (!p.team) return; byLeg[j][p.team] = (byLeg[j][p.team] || 0) + 1; onMap[p.team] = (onMap[p.team] || 0) + 1; });
+  // onMap counts use in any week after the first one mapped, which is the week "free to burn" is about
+  for (let s = 0; s < MAP_SAMPLES; s++) bestMap(tab, legIdx, bi, s).path.forEach((p, j) => { if (!p.team) return; byLeg[j][p.team] = (byLeg[j][p.team] || 0) + 1; if (j > 0) onMap[p.team] = (onMap[p.team] || 0) + 1; });
   const plan = base.path.map((p, j) => {
     const l = p.leg, near = tab.near[l.id];
     const out = { ...p, held: p.team ? byLeg[j][p.team] || 0 : 0, samples: MAP_SAMPLES, others: Object.entries(byLeg[j]).filter(([t]) => t !== p.team).sort((a, b) => b[1] - a[1]).slice(0, 2) };
