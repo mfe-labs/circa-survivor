@@ -703,7 +703,8 @@ const CSS = `
 .csp .picker .pk { display:inline-flex; align-items:center; gap:4px; padding:0 3px; margin:-1px 0; vertical-align:middle; border:1px solid transparent; border-radius:6px; background:none; font:inherit; cursor:pointer; }
 .csp .picker .pk:hover { border-color:var(--rule2); background:var(--surface); }
 .csp .picker .pk.bad { border-color:var(--red); }
-.csp .picker .caret { font-size:10px; color:var(--ink3); }
+.csp .picker .pk { position:relative; }
+.csp .picker .caret { position:absolute; left:calc(100% + 1px); top:50%; transform:translateY(-50%); font-size:10px; color:var(--ink3); }
 .csp .picker .none { font-size:12px; color:var(--ink3); padding:0 6px; }
 .csp .picker .pop { position:absolute; z-index:20; top:calc(100% + 4px); left:0; width:250px; max-height:320px; overflow:auto; background:var(--surface); border:1px solid var(--rule2); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12); padding:4px; text-align:left; }
 .csp .picker .opt { display:grid; grid-template-columns:40px 1fr 36px 58px; align-items:center; gap:6px; width:100%; padding:4px 6px; border:none; border-radius:5px; background:none; font:inherit; font-size:12px; color:var(--ink); cursor:pointer; text-align:left; }
@@ -720,6 +721,10 @@ const CSS = `
 .csp .dist.maptab td, .csp .dist.maptab td:first-child { height:auto; padding:7px 12px; vertical-align:middle; white-space:nowrap; text-align:center; }
 .csp .dist.maptab th, .csp .dist.maptab th:first-child { text-align:center; vertical-align:middle; }
 .csp .maptab td:nth-child(2) { font-weight:400; }
+/* fixed widths for every column but the last, so Week/Pick/Game/Win sit in the same place on every map tab */
+.csp .dist.maptab th:nth-child(1) { width:140px; } .csp .dist.maptab th:nth-child(2) { width:100px; }
+.csp .dist.maptab th:nth-child(3) { width:130px; } .csp .dist.maptab th:nth-child(4) { width:64px; }
+.csp .dist.maptab th:nth-child(5):not(:last-child) { width:104px; } .csp .dist.maptab th:nth-child(6):not(:last-child) { width:112px; }
 .csp .dist.maptab td.why { text-align:left; white-space:normal; color:var(--ink2); min-width:320px; line-height:1.45; }
 .csp .maptab td.weak { color:var(--amber); font-weight:600; }
 .csp .maptab td.mut { color:var(--ink3); }
