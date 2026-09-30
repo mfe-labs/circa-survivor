@@ -8,11 +8,12 @@ import picksBundled from "../data/picks.json";
 import actualsBundled from "../data/actuals.json";
 import oddsBundled from "../data/odds.json";
 import ratingsBundled from "../data/ratings.json";
+import mapsBundled from "../data/maps.json";
 
 const VERSION = "2.0";
 const TOKEN_KEY = "csp-github-token";
-const PATHS = { picks: "data/picks.json", actuals: "data/actuals.json", odds: "data/odds.json", ratings: "data/ratings.json" };
-const BUNDLED = { picks: picksBundled, actuals: actualsBundled, odds: oddsBundled, ratings: ratingsBundled };
+const PATHS = { picks: "data/picks.json", actuals: "data/actuals.json", odds: "data/odds.json", ratings: "data/ratings.json", maps: "data/maps.json" };
+const BUNDLED = { picks: picksBundled, actuals: actualsBundled, odds: oddsBundled, ratings: ratingsBundled, maps: mapsBundled };
 
 // team cell colors: [background, text]
 const COLORS = {
@@ -691,6 +692,30 @@ const CSS = `
 .csp .strip .v.sm { font-size:15px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; min-height:26px; }
 .csp .strip .v.sm .mut { color:var(--ink3); font-weight:500; }
 .csp .mapv .lede { font-size:12px; color:var(--ink2); line-height:1.5; max-width:84ch; margin:0 0 10px; }
+.csp .maptabs { display:flex; align-items:flex-end; gap:2px; margin:12px 0 0; border-bottom:1px solid var(--rule); }
+.csp .maptabs > button { height:32px; padding:0 14px; font:inherit; font-size:13px; font-weight:500; color:var(--ink2); background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-1px; cursor:pointer; }
+.csp .maptabs > button:hover { color:var(--ink); }
+.csp .maptabs > button.on { color:var(--ink); border-bottom-color:var(--ink); font-weight:600; }
+.csp .maptabs > button.add { font-size:17px; font-weight:400; padding:0 12px; color:var(--ink3); }
+.csp .maptabs .tabact { margin-left:auto; display:flex; gap:6px; align-self:center; }
+.csp .strip .v.bad { color:var(--red); }
+.csp .picker { position:relative; display:inline-block; }
+.csp .picker .pk { display:inline-flex; align-items:center; gap:4px; padding:2px 4px; border:1px solid transparent; border-radius:6px; background:none; font:inherit; cursor:pointer; }
+.csp .picker .pk:hover { border-color:var(--rule2); background:var(--surface); }
+.csp .picker .pk.bad { border-color:var(--red); }
+.csp .picker .caret { font-size:10px; color:var(--ink3); }
+.csp .picker .none { font-size:12px; color:var(--ink3); padding:0 6px; }
+.csp .picker .pop { position:absolute; z-index:20; top:calc(100% + 4px); left:0; width:250px; max-height:320px; overflow:auto; background:var(--surface); border:1px solid var(--rule2); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12); padding:4px; text-align:left; }
+.csp .picker .opt { display:grid; grid-template-columns:40px 1fr 36px 58px; align-items:center; gap:6px; width:100%; padding:4px 6px; border:none; border-radius:5px; background:none; font:inherit; font-size:12px; color:var(--ink); cursor:pointer; text-align:left; }
+.csp .picker .opt:hover { background:var(--panel); }
+.csp .picker .opt.on { background:var(--sel-bg); }
+.csp .picker .opt .g { color:var(--ink2); }
+.csp .picker .opt .w { text-align:right; font-variant-numeric:tabular-nums; }
+.csp .picker .opt .wh { font-size:11px; color:var(--red); text-align:right; }
+.csp .picker .opt.used .g, .csp .picker .opt.used .w { text-decoration:line-through; color:var(--ink3); }
+.csp .picker .opt.used .chip { opacity:.5; }
+.csp .maptab tr.conflict td:first-child { box-shadow:inset 3px 0 0 var(--red); }
+.csp .maptab tr.conflict td.why { color:var(--red); }
 .csp .chip.sm { display:inline-block; min-width:34px; text-align:center; padding:1px 5px; border-radius:4px; font-weight:600; font-size:10.5px; }
 .csp .dist.maptab td, .csp .dist.maptab td:first-child { height:auto; padding:7px 12px; vertical-align:middle; white-space:nowrap; text-align:center; }
 .csp .dist.maptab th, .csp .dist.maptab th:first-child { text-align:center; vertical-align:middle; }
@@ -791,7 +816,7 @@ export default function CircaSurvivorPlanner() {
     return () => { live = false; };
   }, [token]);
 
-  const data = useMemo(() => buildData({ picks: files.picks.json, actuals: files.actuals.json, odds: files.odds.json, ratings: files.ratings.json }), [files]);
+  const data = useMemo(() => buildData({ picks: files.picks.json, actuals: files.actuals.json, odds: files.odds.json, ratings: files.ratings.json }), [files.picks, files.actuals, files.odds, files.ratings]);
   const entries = data.entries;
   const canEdit = !!user;
 
@@ -813,6 +838,14 @@ export default function CircaSurvivorPlanner() {
     setJson("picks", (p) => ({ ...p, entries: p.entries.map((e, i) => { if (i !== active) return e; const picks = { ...e.picks }; if (picks[lg] === team) delete picks[lg]; else picks[lg] = team; return { ...e, picks }; }) }));
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => save("picks", `Picks: ${entries[active]?.name} ${lg} ${team}`), 800);
+  };
+  // saved maps (Map tab): same auto-save as picks, on its own timer
+  const mapTimer = useRef(null);
+  const saveMaps = (fn, message) => {
+    if (!canEdit) { say("Sign in to edit maps", false); return; }
+    setJson("maps", (m) => fn(m?.maps ? m : { maps: [] }));
+    clearTimeout(mapTimer.current);
+    mapTimer.current = setTimeout(() => save("maps", message), 800);
   };
   const saveActuals = (json, message) => { setJson("actuals", () => json); setTimeout(() => save("actuals", message), 0); };
 
@@ -985,7 +1018,7 @@ export default function CircaSurvivorPlanner() {
         </div>
         <div className="ctl">
           <div className="row">
-            {view === "actuals" && (status || !loaded) && <span className={"note" + (statusErr ? " err" : " msg")}>{!loaded ? "Loading…" : status}</span>}
+            {view !== "planner" && (status || !loaded) && <span className={"note" + (statusErr ? " err" : " msg")}>{!loaded ? "Loading…" : status}</span>}
             <a className="link" href="guide.html" title="Plain-English walkthrough of every number here">How it works</a>
             <a className="link" href="math.html" title="Every projection worked out by hand, with rules of thumb">The math</a>
             {canEdit ? <><span className="who">{user}</span><button className="link" onClick={signOut}>Sign out</button></>
@@ -1007,7 +1040,7 @@ export default function CircaSurvivorPlanner() {
           </div>
         </div>
       )}
-      {view === "map" && <MapView data={data} params={params} entry={entry} status={standing[active]} />}
+      {view === "map" && <MapView data={data} params={params} entry={entry} status={standing[active]} canEdit={canEdit} onMaps={saveMaps} maps={(files.maps.json?.maps || []).filter((m) => m.entry === entry.name)} />}
       {view === "actuals" && <Actuals data={data} params={params} canEdit={canEdit} onSave={saveActuals} />}
       {view === "planner" && audit && <AuditPanel legId={legId} data={data} params={params} merr={merr} stats={stats} evNote={evNote} map={statsAll.map} />}
       {view === "planner" && <>
@@ -1201,45 +1234,153 @@ function mapWhy(p) {
   else if (p.fieldPick > 0.3) parts.push(`Crowded: about ${pct0(p.fieldPick)} of the field projected on them.`);
   return parts.join(" ");
 }
-function MapView({ data, params, entry, status }) {
-  const res = useMemo(() => planMap(data, entry.picks, params), [data, entry, params]);
-  const chip = (t, sm) => <span className={"chip" + (sm ? " sm" : "")} style={{ background: COLORS[t][0], color: COLORS[t][1] }}>{t}</span>;
-  const game = (legId, t) => {
-    const g = OPP[legId]?.[t]; if (!g) return "";
-    const ln = lineFor(legId, t, data);
-    return `${g.home ? "vs" : g.neutral ? "n" : "@"} ${g.opp}${ln?.spread != null ? ` ${ln.spread > 0 ? "+" : ""}${ln.spread}` : ""}`;
+const teamChip = (t, sm) => <span className={"chip" + (sm ? " sm" : "")} style={{ background: COLORS[t][0], color: COLORS[t][1] }}>{t}</span>;
+const shortLeg = (l) => (l.label === l.id ? l.id : "W" + l.label);
+function gameText(legId, t, data) {
+  const g = OPP[legId]?.[t]; if (!g) return "";
+  const ln = lineFor(legId, t, data);
+  return `${g.home ? "vs" : g.neutral ? "n" : "@"} ${g.opp}${ln?.spread != null ? ` ${ln.spread > 0 ? "+" : ""}${ln.spread}` : ""}`;
+}
+// A saved map's picks against the weeks still open: win chances, duplicates, and the three boxes.
+export function customSummary(data, entry, map, res) {
+  const spentAt = {};
+  for (const l of LEGS) { const t = entry.picks[l.id]; if (t && data.actuals[l.id] && !res.plan.some((p) => p.leg.id === l.id)) spentAt[t] = l; }
+  const rows = res.plan.map((p) => { const team = map.picks[p.leg.id] || null; return { leg: p.leg, team, win: team ? lineFor(p.leg.id, team, data)?.win ?? null : null }; });
+  const where = {}; rows.forEach((r) => { if (r.team) (where[r.team] ||= []).push(r.leg); });
+  for (const r of rows) {
+    if (!r.team) continue;
+    r.also = where[r.team].filter((l) => l.id !== r.leg.id);
+    r.spent = spentAt[r.team] || null;
+    r.conflict = r.also.length > 0 || !!r.spent;
+  }
+  const conflicts = rows.filter((r) => r.conflict).length, empty = rows.filter((r) => !r.team).length;
+  const filled = rows.filter((r) => r.team && r.win != null);
+  const now = res.plan[0]?.leg || null;
+  const later = new Set(rows.slice(1).map((r) => r.team).filter(Boolean));
+  const cheap = !now ? [] : Object.keys(OPP[now.id]).filter((t) => !spentAt[t] && !later.has(t) && (lineFor(now.id, t, data)?.win ?? 0) >= 0.55)
+    .map((t) => ({ team: t, win: lineFor(now.id, t, data).win })).sort((a, b) => b.win - a.win).slice(0, 3);
+  return {
+    rows, now, cheap, conflicts, empty,
+    winOut: conflicts || empty ? null : filled.reduce((x, r) => x * r.win, 1),
+    winNote: conflicts ? `${conflicts} week${conflicts === 1 ? "" : "s"} in conflict` : empty ? `${empty} week${empty === 1 ? "" : "s"} with no pick` : null,
+    weakest: [...filled].sort((a, b) => a.win - b.win).slice(0, 3),
+    usedAt: (t, legId) => { const o = (where[t] || []).filter((l) => l.id !== legId); return spentAt[t] ? `used ${shortLeg(spentAt[t])}` : o.length ? `in ${o.map(shortLeg).join(", ")}` : null; },
   };
+}
+// Pick control for a saved map: the team chip plus a short list of that week's teams by win %, anything already
+// on the map or spent crossed out but still pickable.
+function PickPicker({ legId, team, data, usedAt, onPick, canEdit, conflict }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const out = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", out); document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", out); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  const opts = Object.keys(OPP[legId]).map((t) => ({ t, win: lineFor(legId, t, data)?.win ?? null })).sort((a, b) => (b.win ?? 0) - (a.win ?? 0));
+  if (!canEdit) return team ? teamChip(team) : <span className="mut">–</span>;
+  return (
+    <span className="picker" ref={ref}>
+      <button className={"pk" + (conflict ? " bad" : "")} onClick={() => setOpen((o) => !o)} title="Change this week's pick">
+        {team ? teamChip(team) : <span className="none">pick</span>}<span className="caret">▾</span>
+      </button>
+      {open && <div className="pop" role="listbox">
+        {opts.map((o) => { const w = usedAt(o.t, legId); return (
+          <button key={o.t} className={"opt" + (w ? " used" : "") + (o.t === team ? " on" : "")} onClick={() => { onPick(o.t); setOpen(false); }}>
+            {teamChip(o.t, true)}<span className="g">{gameText(legId, o.t, data)}</span><span className="w">{pct0(o.win)}</span><span className="wh">{w || ""}</span>
+          </button>); })}
+      </div>}
+    </span>
+  );
+}
+function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
+  const res = useMemo(() => planMap(data, entry.picks, params), [data, entry, params]);
+  const [tab, setTab] = useState("claude");
+  const custom = maps.find((m) => m.id === tab) || null;
+  const cs = useMemo(() => (custom ? customSummary(data, entry, custom, res) : null), [data, entry, custom, res]);
   if (status && !status.alive) return <div className="act mapv"><p className="lede">{entry.name} is out ({legLabel(status.leg)}). Nothing left to map.</p></div>;
   const planned = Object.fromEntries(res.plan.map((p) => [p.leg.id, p]));
   const planWeek = Object.fromEntries(res.plan.filter((p) => p.team).map((p) => [p.team, p.leg]));
   const nowId = res.currentLeg?.id;
+  const create = () => {
+    const name = window.prompt("Name this map", `Map ${maps.length + 1}`); if (!name?.trim()) return;
+    const id = Date.now().toString(36);
+    const picks = Object.fromEntries(res.plan.filter((p) => p.team).map((p) => [p.leg.id, p.team]));
+    onMaps((m) => ({ maps: [...m.maps, { id, name: name.trim(), entry: entry.name, picks }] }), `Map: new "${name.trim()}" for ${entry.name}`);
+    setTab(id);
+  };
+  const rename = () => {
+    const name = window.prompt("Rename this map", custom.name); if (!name?.trim() || name.trim() === custom.name) return;
+    onMaps((m) => ({ maps: m.maps.map((x) => (x.id === custom.id ? { ...x, name: name.trim() } : x)) }), `Map: rename "${custom.name}" to "${name.trim()}"`);
+  };
+  const remove = () => {
+    if (!window.confirm(`Delete the map "${custom.name}"?`)) return;
+    onMaps((m) => ({ maps: m.maps.filter((x) => x.id !== custom.id) }), `Map: delete "${custom.name}"`);
+    setTab("claude");
+  };
+  const setMapPick = (legId, team) => onMaps((m) => ({ maps: m.maps.map((x) => (x.id === custom.id ? { ...x, picks: { ...x.picks, [legId]: team } } : x)) }), `Map "${custom.name}": ${legId} ${team}`);
+
+  const box = custom
+    ? { winOut: cs.winOut, winNote: cs.winNote, weakest: cs.weakest, cheapLeg: cs.now,
+        cheap: cs.cheap.map((f) => <span key={f.team} title={`${f.team} is ${pct0(f.win)} to win this week and is not used later in this map`}>{teamChip(f.team, true)} <span className="mut">({pct0(f.win)})</span></span>),
+        cheapCap: (lg) => `free to burn in ${lg} under this map: favorites (win %) it does not use later` }
+    : { winOut: res.winOut, weakest: res.weakest, cheapLeg: res.nowLeg,
+        cheap: res.free.map((f) => <span key={f.team} title={`${f.team} is ${pct0(f.win)} to win this week and gets used in a later week in ${Math.round(100 * f.onMap)}% of the ${res.samples} seasons`}>{teamChip(f.team, true)} <span className="mut">({pct0(f.win)})</span> {pct0(f.onMap)}</span>),
+        cheapCap: (lg) => `cheapest to burn in ${lg}: team (win %) and the chance a later week needs them` };
+  const pastRow = (l) => {
+    const a = data.actuals[l.id], mine = entry.picks[l.id];
+    const r = !mine ? "No pick" : a.won.includes(mine) ? "Won" : a.lost.includes(mine) ? "Lost" : "In progress";
+    return <tr key={l.id} className="past"><td>{legLabel(l)}</td><td>{mine ? teamChip(mine) : "–"}</td><td>{mine ? gameText(l.id, mine, data) : ""}</td><td>{mine ? pct0(lineFor(l.id, mine, data)?.win) : ""}</td>{!custom && <><td></td><td></td></>}<td className="why">{r}</td></tr>;
+  };
   return (
     <div className="act mapv">
+      <div className="maptabs">
+        <button className={!custom ? "on" : ""} onClick={() => setTab("claude")}>Claude's Map</button>
+        {maps.map((m) => <button key={m.id} className={custom?.id === m.id ? "on" : ""} onClick={() => setTab(m.id)}>{m.name}</button>)}
+        {canEdit && <button className="add" onClick={create} title="New map, starting from Claude's">+</button>}
+        {custom && canEdit && <span className="tabact"><button className="link" onClick={rename}>Rename</button><button className="link" onClick={remove}>Delete</button></span>}
+      </div>
       <div className="strip">
-        <div className="fig"><div className="v">{res.winOut ? (100 * res.winOut).toFixed(1) + "%" : "–"}</div><div className="k">chance of winning every week on this map</div></div>
-        <div className="fig"><div className="v sm">{res.weakest.map((p) => <span key={p.leg.id}>{p.leg.label === p.leg.id ? p.leg.id : "W" + p.leg.label} {pct0(p.win)}</span>)}</div><div className="k">weakest weeks, where the entry most likely dies</div></div>
-        {res.nowLeg && <div className="fig"><div className="v sm">{res.free.length ? res.free.map((f) => <span key={f.team} title={`${f.team} is ${pct0(f.win)} to win this week and gets used in a later week in ${Math.round(100 * f.onMap)}% of the ${res.samples} seasons`}>{chip(f.team, true)} <span className="mut">({pct0(f.win)})</span> {pct0(f.onMap)}</span>) : "none"}</div><div className="k">cheapest to burn in {legLabel(res.nowLeg)}: team (win %) and the chance a later week needs them</div></div>}
+        <div className="fig"><div className={"v" + (box.winOut == null && box.winNote ? " bad" : "")}>{box.winOut != null ? (100 * box.winOut).toFixed(1) + "%" : box.winNote ? "not valid" : "–"}</div><div className="k">{box.winOut == null && box.winNote ? box.winNote : "chance of winning every week on this map"}</div></div>
+        <div className="fig"><div className="v sm">{box.weakest.map((p) => <span key={p.leg.id}>{shortLeg(p.leg)} {pct0(p.win)}</span>)}</div><div className="k">weakest weeks, where the entry most likely dies</div></div>
+        {box.cheapLeg && <div className="fig"><div className="v sm">{box.cheap.length ? box.cheap : "none"}</div><div className="k">{box.cheapCap(legLabel(box.cheapLeg))}</div></div>}
       </div>
       <table className="dist maptab">
-        <thead><tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title={`How many of ${res.samples} seasons, with future lines jiggled by their usual error, picked this team for this week`}>First choice</th><th title="Who covers this week if the pick is spent elsewhere">Backup</th><th>Why</th></tr></thead>
+        <thead>{custom
+          ? <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th>Notes</th></tr>
+          : <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title={`How many of ${res.samples} seasons, with future lines jiggled by their usual error, picked this team for this week`}>First choice</th><th title="Who covers this week if the pick is spent elsewhere">Backup</th><th>Why</th></tr>}</thead>
         <tbody>
           {LEGS.map((l) => {
-            const a = data.actuals[l.id], mine = entry.picks[l.id], p = planned[l.id];
-            if (a && !p) {
-              const res2 = !mine ? "No pick" : a.won.includes(mine) ? "Won" : a.lost.includes(mine) ? "Lost" : "In progress";
-              return <tr key={l.id} className="past"><td>{legLabel(l)}</td><td>{mine ? chip(mine) : "–"}</td><td>{mine ? game(l.id, mine) : ""}</td><td>{mine ? pct0(lineFor(l.id, mine, data)?.win) : ""}</td><td></td><td></td><td className="why">{res2}</td></tr>;
-            }
+            const p = planned[l.id];
+            if (data.actuals[l.id] && !p) return pastRow(l);
             if (!p) return null;
+            const cls = (l.holiday ? "hol" : "") + (l.id === nowId ? " cur" : "");
+            if (custom) {
+              const r = cs.rows.find((x) => x.leg.id === l.id);
+              const note = !r.team ? "No pick yet." : r.spent ? `Conflict: already used in ${legLabel(r.spent)}.` : r.also.length ? `Conflict: also in ${r.also.map(legLabel).join(", ")}.` : r.win != null && r.win < 0.6 ? "Coin-flip week." : "";
+              return (
+                <tr key={l.id} className={cls + (r.conflict ? " conflict" : "")}>
+                  <td>{legLabel(l)}</td>
+                  <td><PickPicker legId={l.id} team={r.team} data={data} usedAt={cs.usedAt} onPick={(t) => setMapPick(l.id, t)} canEdit={canEdit} conflict={r.conflict} /></td>
+                  <td>{r.team ? gameText(l.id, r.team, data) : ""}</td>
+                  <td className={r.win != null && r.win < 0.6 ? "weak" : ""}>{pct0(r.win)}</td>
+                  <td className="why">{note}</td>
+                </tr>
+              );
+            }
+            const mine = entry.picks[l.id];
             const soft = mine && mine !== p.team ? ` You have ${mine} entered for this week; the map would use ${mine} ${planWeek[mine] ? "in " + legLabel(planWeek[mine]) : "nowhere"}.` : mine ? " Matches the pick you entered." : "";
             const alts = p.others.map(([t, n]) => `${t} ${n}`).join(", ");
             return (
-              <tr key={l.id} className={(l.holiday ? "hol" : "") + (l.id === nowId ? " cur" : "") + (p.team ? "" : " dead")}>
+              <tr key={l.id} className={cls + (p.team ? "" : " dead")}>
                 <td>{legLabel(l)}</td>
-                <td>{p.team ? chip(p.team) : "–"}</td>
-                <td>{p.team ? game(l.id, p.team) : ""}</td>
+                <td>{p.team ? teamChip(p.team) : "–"}</td>
+                <td>{p.team ? gameText(l.id, p.team, data) : ""}</td>
                 <td className={p.win != null && p.win < 0.6 ? "weak" : ""}>{pct0(p.win)}</td>
                 <td title={alts ? `Also first choice: ${alts} (of ${p.samples})` : ""}>{p.team ? `${p.held}/${p.samples}` : ""}</td>
-                <td>{p.backup ? <>{chip(p.backup, true)} {pct0(p.backupWin)}</> : "–"}</td>
+                <td>{p.backup ? <>{teamChip(p.backup, true)} {pct0(p.backupWin)}</> : "–"}</td>
                 <td className="why">{mapWhy(p)}{soft}</td>
               </tr>
             );

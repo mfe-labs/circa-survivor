@@ -1,5 +1,5 @@
 // DILI: EV net of what the team is worth to the rest of the entry's season (the map); and the futures-market prior.
-import { buildData, computeEV, computeDili, planMap, spentTeams, fitParams, fvFor } from "../src/CircaSurvivorPlanner.jsx";
+import { buildData, computeEV, computeDili, planMap, spentTeams, customSummary, fitParams, fvFor } from "../src/CircaSurvivorPlanner.jsx";
 import { priorFromFutures } from "../src/ratings.js";
 import { OPP, ALL_TEAMS, LEGS, TG_TEAMS, XM_TEAMS } from "../src/schedule.js";
 import picks from "../data/picks.json"; import actuals from "../data/actuals.json"; import odds from "../data/odds.json"; import ratings from "../data/ratings.json";
@@ -80,6 +80,21 @@ ok("future value on a readable scale", fvFor("W2", "KC", data) < 18 && fvFor("W2
   ok("fast enough for the browser", ms < 600, `${ms} ms`);
   const t1 = Date.now(); const pl = planMap(real, picks.entries[0].picks, params); const ms2 = Date.now() - t1;
   ok("real plan skips every spent team and is quick", pl.plan.every((p) => !spentTeams(real, picks.entries[0].picks).has(p.team)) && ms2 < 1500, `${ms2} ms, ${pl.plan.length} weeks`);
+})();
+
+// saved maps: duplicates and spent teams are conflicts, the boxes follow the map
+(() => {
+  const d = fin(2); const entryP = { W1: "KC", W2: "BUF" };
+  const pl = planMap(d, entryP, P);
+  const picks = Object.fromEntries(pl.plan.map((p) => [p.leg.id, p.team]));
+  const clean = customSummary(d, { picks: entryP }, { picks }, pl);
+  ok("a copy of Claude's map has no conflicts and the same chance of winning out", clean.conflicts === 0 && Math.abs(clean.winOut - pl.winOut) < 1e-12);
+  const dup = customSummary(d, { picks: entryP }, { picks: { ...picks, W5: picks.W9 } }, pl);
+  ok("a team in two weeks flags both", dup.rows.filter((r) => r.conflict).map((r) => r.leg.id).sort().join() === ["W5", "W9"].sort().join() && dup.winOut === null && /2 weeks/.test(dup.winNote));
+  const sp = customSummary(d, { picks: entryP }, { picks: { ...picks, W6: "KC" } }, pl);
+  ok("a team spent in a finished week is a conflict", sp.rows.find((r) => r.leg.id === "W6").spent?.id === "W1" && sp.usedAt("KC", "W7") === "used W1");
+  const gap = customSummary(d, { picks: entryP }, { picks: { W3: picks.W3 } }, pl);
+  ok("empty weeks make the map incomplete, not wrong", gap.conflicts === 0 && gap.winOut === null && /no pick/.test(gap.winNote));
 })();
 
 // futures prior: monotone in title odds, centered, on a points scale
