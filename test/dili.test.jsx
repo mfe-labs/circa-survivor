@@ -38,8 +38,10 @@ ok("nothing left to map in the last week", (() => { const late = lockedTo(LEGS.l
 ok("locked weeks are not mapped", (() => { const d = lockedTo(3); const r = mk("W5"); const m = computeDili("W5", r, d, new Set(), P); return m.every((p) => !["W1", "W2", "W3", "W5"].includes(p.leg.id)) && m.some((p) => p.leg.id === "W4"); })());
 // picks in weeks not completely over are soft: they neither spend a team nor fix a week
 const fin = (n, pend = []) => ({ ...data, actuals: Object.fromEntries(LEGS.slice(0, n).map((l, i) => [l.id, { picks: {}, won: [], lost: [], pending: i === n - 1 ? pend : [] }])) });
-ok("only finished weeks spend a team", (() => { const sp = spentTeams(fin(3, ["X"]), { W1: "KC", W2: "BUF", W3: "SF", W4: "PHI" }); return sp.has("KC") && sp.has("BUF") && !sp.has("SF") && !sp.has("PHI"); })());
-ok("a week still being played stays in the plan", (() => { const pl = planMap(fin(3, ["X"]), { W1: "KC", W2: "BUF", W3: "SF", W4: "PHI" }, P); return pl.plan[0].leg.id === "W3" && pl.plan.every((p) => p.team !== "KC" && p.team !== "BUF") && pl.plan.some((p) => p.team === "SF"); })());
+// a week with games pending counts as current only until the next week starts, so pin the clock to Week 3
+const atWeek3 = (fn) => { const real = Date.now; Date.now = () => new Date("2026-09-26T12:00:00Z").getTime(); try { return fn(); } finally { Date.now = real; } };
+ok("only finished weeks spend a team", atWeek3(() => { const sp = spentTeams(fin(3, ["X"]), { W1: "KC", W2: "BUF", W3: "SF", W4: "PHI" }); return sp.has("KC") && sp.has("BUF") && !sp.has("SF") && !sp.has("PHI"); }));
+ok("a week still being played stays in the plan", atWeek3(() => { const pl = planMap(fin(3, ["X"]), { W1: "KC", W2: "BUF", W3: "SF", W4: "PHI" }, P); return pl.plan[0].leg.id === "W3" && pl.plan.every((p) => p.team !== "KC" && p.team !== "BUF") && pl.plan.some((p) => p.team === "SF"); }));
 ok("viewing a later week still covers the open weeks before it", (() => { const m = computeDili("W6", mk("W6"), data, new Set(), P); return m.some((p) => p.leg.id === "W5") && !m.some((p) => p.leg.id === "W6"); })());
 // the Map tab's plan
 (() => {
