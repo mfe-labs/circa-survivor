@@ -17,7 +17,7 @@ const BUNDLED = { picks: picksBundled, actuals: actualsBundled, odds: oddsBundle
 
 // team cell colors: [background, text]
 const COLORS = {
-  ARI: ["#97233F", "#FFB612"], ATL: ["#A71930", "#FFFFFF"], BAL: ["#241773", "#9E7C0C"], BUF: ["#00338D", "#C60C30"],
+  ARI: ["#97233F", "#FFFFFF"], ATL: ["#A71930", "#FFFFFF"], BAL: ["#241773", "#9E7C0C"], BUF: ["#00338D", "#C60C30"],
   CAR: ["#0085CA", "#101820"], CHI: ["#0B162A", "#C83803"], CIN: ["#FB4F14", "#000000"], CLE: ["#311D00", "#FF3C00"],
   DAL: ["#003594", "#B0B7BC"], DEN: ["#FB4F14", "#002244"], DET: ["#0076B6", "#B0B7BC"], GB: ["#203731", "#FFB612"],
   HOU: ["#03202F", "#A71930"], IND: ["#002C5F", "#FFFFFF"], JAX: ["#006778", "#D7A22A"], KC: ["#E31837", "#FFB81C"],
@@ -1376,7 +1376,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
               );
             }
             const mine = entry.picks[l.id];
-            const soft = mine && mine !== p.team ? ` You have ${mine} entered for this week; the map would use ${mine} ${planWeek[mine] ? "in " + legLabel(planWeek[mine]) : "nowhere"}.` : mine ? " Matches the pick you entered." : "";
+            const soft = mine && mine !== p.team ? ` You have ${mine} entered for this week; the map would use ${mine} ${planWeek[mine] ? "in " + legLabel(planWeek[mine]) : "nowhere"}.` : "";
             const alts = p.others.map(([t, n]) => `${t} ${n}`).join(", ");
             return (
               <tr key={l.id} className={cls + (p.team ? "" : " dead")}>
