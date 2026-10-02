@@ -1,7 +1,7 @@
 {
- "updatedAt": "2026-10-02T16:47:26.474Z",
+ "updatedAt": "2026-10-02T19:22:22.686Z",
  "prev": {
-  "updatedAt": "2026-10-02T02:18:38.654Z",
+  "updatedAt": "2026-10-02T16:47:26.474Z",
   "ratings": {
    "ARI": -3.6,
    "ATL": -3.7,
@@ -10,13 +10,13 @@
    "CAR": -2.3,
    "CHI": 0.8,
    "CIN": 2.3,
-   "CLE": -6.2,
+   "CLE": -6.1,
    "DAL": 1.9,
    "DEN": 3.1,
    "DET": 2.5,
    "GB": 1.4,
    "HOU": 2.7,
-   "IND": -0.7,
+   "IND": -0.6,
    "JAX": 2,
    "KC": 3.5,
    "LAC": 0.9,
@@ -27,14 +27,14 @@
    "NE": 1.1,
    "NO": -2.6,
    "NYG": -2.7,
-   "NYJ": -3.9,
+   "NYJ": -4,
    "PHI": 2.5,
-   "PIT": -1.1,
+   "PIT": -1.2,
    "SEA": 4.2,
    "SF": 2.9,
    "TB": -1.8,
    "TEN": -5.2,
-   "WAS": -2.5
+   "WAS": -2.4
   }
  },
  "source": "market spreads: 79 games this season (nflverse closing lines + current book), anchored to the Super Bowl futures market",
@@ -129,17 +129,17 @@
   "CHI": 0.8,
   "CIN": 2.3,
   "CLE": -6.1,
-  "DAL": 1.9,
+  "DAL": 1.8,
   "DEN": 3.1,
   "DET": 2.5,
   "GB": 1.4,
   "HOU": 2.7,
-  "IND": -0.6,
+  "IND": -0.5,
   "JAX": 2,
   "KC": 3.5,
   "LAC": 0.9,
   "LAR": 5.2,
-  "LV": -3.5,
+  "LV": -3.4,
   "MIA": -7.5,
   "MIN": 0.7,
   "NE": 1.1,
@@ -147,11 +147,11 @@
   "NYG": -2.7,
   "NYJ": -4,
   "PHI": 2.5,
-  "PIT": -1.2,
+  "PIT": -1.1,
   "SEA": 4.2,
   "SF": 2.9,
   "TB": -1.8,
   "TEN": -5.2,
-  "WAS": -2.4
+  "WAS": -2.6
  }
 }
