@@ -197,7 +197,7 @@
    "source": "https://www.circasports.com/wp-content/uploads/2026/09/Circa-Survivor-2026-Week-3-Selections.pdf"
   },
   "W4": {
-   "asOf": "Oct 3 (22 pending)",
+   "asOf": "Oct 4 (20 pending)",
    "picks": {
     "PIT": 6,
     "MIN": 2733,
@@ -226,10 +226,12 @@
     "NOPICK": 1
    },
    "won": [
+    "IND",
     "CLE"
    ],
    "lost": [
     "PIT",
+    "WAS",
     "NOPICK"
    ],
    "pending": [
@@ -241,7 +243,6 @@
     "DET",
     "ARI",
     "GB",
-    "IND",
     "KC",
     "LAR",
     "HOU",
@@ -251,7 +252,6 @@
     "SF",
     "CIN",
     "ATL",
-    "WAS",
     "JAX",
     "CAR",
     "NYG"
