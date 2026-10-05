@@ -768,6 +768,77 @@ const CSS = `
 .csp .editor .grid .g { display:flex; gap:6px; align-items:center; font-size:12px; }
 .csp .editor .grid .g .chip { display:inline-block; min-width:44px; text-align:center; padding:3px 6px; border-radius:5px; font-weight:600; font-size:11px; }
 @media (prefers-reduced-motion: no-preference) { .csp .btn, .csp .ghost, .csp .views button, .csp .seg button { transition:background .12s, border-color .12s, color .12s; } }
+/* ---------- phones: everything below applies only under 700px wide, so the desktop layout is untouched ---------- */
+@media (max-width: 700px) {
+  .csp { height:100dvh; }
+  /* top bar: title, views and entries wrap; links go underneath */
+  .csp .bar { flex-direction:column; align-items:stretch; gap:6px; padding:10px 12px 8px; }
+  .csp .bar .left { gap:8px; flex-wrap:wrap; }
+  .csp h1 { font-size:17px; width:100%; }
+  .csp .bar .left > .seg { max-width:100%; overflow-x:auto; scrollbar-width:none; }
+  .csp .bar .left > .seg::-webkit-scrollbar { display:none; }
+  .csp .views button, .csp .seg button { padding:0 10px; }
+  .csp .ctl { align-items:flex-start; }
+  .csp .ctl .row { min-height:0; flex-wrap:wrap; gap:2px 6px; }
+  .csp .link { padding:0 6px 0 0; }
+
+  /* Planner: the five numbers and the team stay pinned and narrower; swipe sideways for the schedule */
+  .csp th { font-size:11px; }
+  .csp .L.wp { left:0; width:44px; min-width:44px; }
+  .csp .L.pp { left:44px; width:42px; min-width:42px; }
+  .csp .L.fv { left:86px; width:42px; min-width:42px; }
+  .csp .L.ev { left:128px; width:44px; min-width:44px; }
+  .csp .L.dili { left:172px; width:46px; min-width:46px; }
+  .csp .L.team, .csp .L.entry { left:218px; width:64px !important; min-width:64px !important; max-width:64px; overflow:hidden; text-overflow:ellipsis; }
+  .csp .L.team { padding:0 4px 0 8px; }
+  .csp .L.entry { padding:0 6px 0 0; font-size:10px; }
+  .csp th.L.team { padding-left:8px; }
+  .csp .team .used, .csp .team .hd { display:none; }
+  .csp .L.pctl { width:218px; min-width:218px; }
+  .csp .controls { width:218px; padding:0 8px 0 10px; }
+  .csp .controls .ghost, .csp .controls .btn { padding:0 8px; }
+  .csp .controls .note { max-width:200px; }
+  .csp td.L.num .d { display:none; }
+  .csp .audit { padding:12px; max-height:60dvh; }
+
+  /* Map: each week is a short card; the reason wraps underneath */
+  .csp .act { padding:4px 12px 20px; }
+  .csp .maptabs { overflow-x:auto; flex-wrap:nowrap; scrollbar-width:none; }
+  .csp .maptabs::-webkit-scrollbar { display:none; }
+  .csp .maptabs > button { flex:none; padding:0 10px; }
+  .csp .maptabs .tabact { margin-left:12px; flex:none; }
+  .csp .strip { margin:8px 0 12px; gap:8px 0; }
+  .csp .strip .fig { flex:1 1 42%; border-right:none; margin-right:0; padding:4px 12px 4px 0; }
+  .csp .mapv .strip .fig { flex-basis:100%; }
+  .csp .strip .v { font-size:20px; }
+  .csp .strip .actions { margin-left:0; flex-direction:row; flex-wrap:wrap; }
+  .csp .dist.maptab, .csp .dist.maptab tbody { display:block; width:100%; }
+  .csp .dist.maptab thead { display:none; }
+  .csp .dist.maptab tr { display:grid; grid-template-columns:84px 76px minmax(0,1fr) 38px 46px; align-items:center; column-gap:6px; row-gap:3px; padding:7px 4px 7px 8px; border-bottom:1px solid var(--rule); }
+  .csp .dist.maptab td, .csp .dist.maptab td:first-child { display:block; height:auto; padding:0; border:none; text-align:left; white-space:nowrap; font-size:12px; background:none; box-shadow:none; }
+  .csp .dist.maptab td:empty { display:none; }
+  .csp .dist.maptab td.bk { grid-column:1 / 3; color:var(--ink3); }
+  .csp .dist.maptab td.bk::before { content:"backup "; font-size:11px; }
+  .csp .dist.maptab td.why { grid-column:1 / -1; min-width:0; white-space:normal; line-height:1.4; font-size:11.5px; }
+  .csp .dist.maptab td.bk + td.why { grid-column:3 / -1; }
+  .csp .maptab tr.cur { background:var(--sel-bg); box-shadow:inset 3px 0 0 var(--sel); }
+  .csp .maptab tr.conflict { box-shadow:inset 3px 0 0 var(--red); }
+  .csp .maptab tr.cur.conflict { box-shadow:inset 3px 0 0 var(--red); }
+  .csp .picker .pop { width:min(250px, calc(100vw - 120px)); }
+  .csp .maptab tr.cur td:first-child, .csp .maptab tr.conflict td:first-child { box-shadow:none; }
+  .csp .dist.maptab tr.past td.why { grid-column:5 / 6; white-space:normal; }
+  /* the pinned entry name stays opaque when the schedule slides under it */
+  .csp .sum tr.out td.L.entry, .csp .sum tr.out.sel td.L.entry { opacity:1; }
+  .csp .sum tr.out td.L.entry > * { opacity:.5; }
+
+  /* Actuals */
+  .csp .legcard .hd2 { padding:10px 12px; }
+  .csp .legcard { overflow-x:auto; }
+  .csp .dist:not(.maptab) th, .csp .dist:not(.maptab) td { padding-left:6px; padding-right:6px; }
+  .csp .dist:not(.maptab) tr > :nth-child(4):not(:last-child) { display:none; }   /* the share bar repeats the % column */
+  .csp .chart { max-width:100%; flex-basis:100%; padding:10px 12px; }
+  .csp .panel input[type=password] { width:100% !important; }
+}
 `;
 
 const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : null);
@@ -966,6 +1037,12 @@ export default function CircaSurvivorPlanner() {
     const ro = new ResizeObserver(measure); ro.observe(el);
     return () => ro.disconnect();
   }, [view]);
+  // on a phone the schedule scrolls sideways under the pinned columns; bring the selected week into view
+  useEffect(() => {
+    const el = wrapRef.current; if (!el || !window.matchMedia("(max-width: 700px)").matches) return;
+    const i = LEGS.findIndex((l) => l.id === legId);
+    el.scrollLeft = Math.max(0, (i - 0.5) * fit.cw);
+  }, [legId, view, fit.cw]);
   const clickSort = (key) => setSort((s) => (s.key === key ? { key, dir: -s.dir } : { key, dir: key === "team" ? -1 : 1 }));
   const fmtSp = (v) => (v == null ? "" : v > 0 ? "+" + v : v === 0 ? "PK" : String(v));
   const pct = (v) => (v == null ? "–" : Math.round(v * 100) + "%");
@@ -1385,7 +1462,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
                 <td>{p.team ? gameText(l.id, p.team, data) : ""}</td>
                 <td className={p.win != null && p.win < 0.6 ? "weak" : ""}>{pct0(p.win)}</td>
                 <td title={alts ? `Also first choice: ${alts} (of ${p.samples})` : ""}>{p.team ? `${p.held}/${p.samples}` : ""}</td>
-                <td>{p.backup ? <>{teamChip(p.backup, true)} {pct0(p.backupWin)}</> : "–"}</td>
+                <td className="bk">{p.backup ? <>{teamChip(p.backup, true)} {pct0(p.backupWin)}</> : "–"}</td>
                 <td className="why">{mapWhy(p)}{soft}</td>
               </tr>
             );
