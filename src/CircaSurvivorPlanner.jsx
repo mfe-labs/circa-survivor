@@ -828,8 +828,10 @@ const CSS = `
   .csp .maptab tr.cur td:first-child, .csp .maptab tr.conflict td:first-child { box-shadow:none; }
   .csp .dist.maptab tr.past td.why { grid-column:5 / 6; white-space:normal; }
   /* the pinned entry name stays opaque when the schedule slides under it */
-  .csp .sum tr.out td.L.entry, .csp .sum tr.out.sel td.L.entry { opacity:1; }
-  .csp .sum tr.out td.L.entry > * { opacity:.5; }
+  /* the pinned rows stay opaque so the board scrolling under them never shows through */
+  .csp .sum tr.out td, .csp .sum tr.out.sel td { opacity:1; color:var(--ink3); }
+  .csp .sum tr.out td > * { opacity:.5; }
+  .csp .sum tr.gap td:first-child { left:0; z-index:6; }
 
   /* Actuals */
   .csp .legcard .hd2 { padding:10px 12px; }
