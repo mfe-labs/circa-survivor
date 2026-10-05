@@ -1,5 +1,6 @@
 // Field timeline + popularity model on the real data files.
 import { buildData, fieldTimeline, modelPick, fitParams, availability } from "../src/CircaSurvivorPlanner.jsx";
+import { OPP } from "../src/schedule.js";
 import picks from "../data/picks.json";
 import actuals from "../data/actuals.json";
 import odds from "../data/odds.json";
@@ -35,6 +36,12 @@ ok("fitParams returns a,b", Number.isFinite(params.a) && Number.isFinite(params.
 ok("early-season knobs stay in a sane range", params.legs <= 3 ? params.a >= 5 && params.a <= 16 && params.b >= 0.05 && params.b <= 0.6 : true, `a=${params.a} b=${params.b}`);
 // no actuals at all → the prior itself
 ok("no actuals → prior", (() => { const p = fitParams({ ...data, actuals: {} }); return p.a === 8 && p.b === 0.15 && p.legs === 0; })());
-// share weighting: the fit must match the top actual team closely (Week 1: JAX 32.5%)
-if (actuals.legs.W1) { const m = modelPick("W1", data, params); ok("top team within 6 pts of actual", Math.abs(m.JAX - 8127 / 25017) < 0.06, `JAX model ${(100 * m.JAX).toFixed(1)}% vs 32.5%`); }
+// share weighting: one fit across every week must still land each week's most-picked team within 8 pts
+(() => {
+  const miss = Object.entries(actuals.legs).filter(([id]) => OPP[id]).map(([id, a]) => {
+    const tot = Object.values(a.picks).reduce((x, y) => x + y, 0), [t] = Object.entries(a.picks).sort((x, y) => y[1] - x[1])[0];
+    return { id, t, d: Math.abs((modelPick(id, data, params)[t] || 0) - a.picks[t] / tot) };
+  });
+  ok("each week's top team within 8 pts of actual", miss.length > 0 && miss.every((m) => m.d < 0.08), miss.map((m) => `${m.id} ${m.t} ${(100 * m.d).toFixed(1)}`).join(", "));
+})();
 if (fails) { console.log(`${fails} FAILED`); process.exit(1); }
