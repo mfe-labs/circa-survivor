@@ -197,7 +197,7 @@
    "source": "https://www.circasports.com/wp-content/uploads/2026/09/Circa-Survivor-2026-Week-3-Selections.pdf"
   },
   "W4": {
-   "asOf": "Oct 4 (20 pending)",
+   "asOf": "Oct 4 (4 pending)",
    "picks": {
     "PIT": 6,
     "MIN": 2733,
@@ -226,35 +226,35 @@
     "NOPICK": 1
    },
    "won": [
+    "MIN",
+    "SEA",
+    "BAL",
+    "CHI",
+    "GB",
     "IND",
-    "CLE"
+    "KC",
+    "CLE",
+    "LAR",
+    "DAL",
+    "SF",
+    "JAX",
+    "NYG"
    ],
    "lost": [
     "PIT",
+    "BUF",
+    "ARI",
+    "HOU",
+    "LAC",
+    "CIN",
     "WAS",
     "NOPICK"
    ],
    "pending": [
-    "MIN",
-    "SEA",
-    "BAL",
-    "BUF",
-    "CHI",
     "DET",
-    "ARI",
-    "GB",
-    "KC",
-    "LAR",
-    "HOU",
     "NO",
-    "DAL",
-    "LAC",
-    "SF",
-    "CIN",
     "ATL",
-    "JAX",
-    "CAR",
-    "NYG"
+    "CAR"
    ],
    "source": "https://www.circasports.com/wp-content/uploads/2026/10/Circa-Survivor-2026-Week-4-Selections.pdf"
   }
