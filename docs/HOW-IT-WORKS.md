@@ -9,7 +9,11 @@ each with its own pick. Each team once per entry. Tie = loss. Schedule is hard-c
   spreads from Pinnacle, BetMGM, DraftKings, FanDuel and Caesars on every upcoming game, and files each book's raw
   quotes under the game's Circa leg. A game is never overwritten once it has kicked off, so it keeps the last
   pre-kickoff quotes seen. Games that kicked off before they were ever captured are backfilled with nflverse's
-  closing moneyline, for history and model fitting only; the backfill never touches an upcoming game.
+  closing moneyline, for history and model fitting only; the backfill never touches an upcoming game. nflverse also
+  posts next week's spreads days before any book's moneyline reaches The Odds API; until a two-sided moneyline
+  exists, that spread is stored as a look-ahead line (`books.nflverse.lookahead`), refreshed every run and replaced
+  by real prices as they arrive. In the app it gives a win chance for planning (Future, DILI, the Map, the grid
+  cell) but never a True Win %, so W% and EV wait for moneylines. The ratings fit already uses those spreads.
 - **True Win %** is computed in the app, per game: each book's two prices are de-vigged on their own (implied =
   100/(ML+100) or −ML/(−ML+100), normalized to sum to 100%), the consensus is the **median** of the books' home-win
   probabilities, and the away side is 1 − home (medians of the two sides need not sum to 1). Status: 3+ books =

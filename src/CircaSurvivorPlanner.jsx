@@ -61,7 +61,7 @@ const roundHalf = (v) => Math.round(v * 2) / 2;
 // status by number of contributing books
 const STATUS = { 0: "none", 1: "single", 2: "degraded" };
 const statusFor = (n, closing) => (closing ? "closing" : STATUS[n] || "consensus");
-const STATUS_TEXT = { consensus: "consensus of 3+ books", degraded: "2 books only (degraded)", single: "single book (provisional)", closing: "closing line from nflverse (game already played)", none: "no valid two-sided moneyline" };
+const STATUS_TEXT = { consensus: "consensus of 3+ books", degraded: "2 books only (degraded)", single: "single book (provisional)", closing: "closing line from nflverse (game already played)", lookahead: "look-ahead spread from nflverse (no moneyline posted yet)", none: "no valid two-sided moneyline" };
 
 // One game's books → per-book de-vigged probabilities with exclusion reasons, plus the consensus.
 function consensusForGame(key, g) {
@@ -69,9 +69,10 @@ function consensusForGame(key, g) {
   const kickoff = g.kickoff ? new Date(g.kickoff).getTime() : null;
   const books = g.books || (g.ml ? { [/nflverse/.test(g.source || "") ? "nflverse" : "draftkings"]: { asof: g.asof, ml: g.ml, spread: g.spread || {} } } : {});
   const rows = Object.entries(books).map(([bk, b]) => {
-    const row = { book: bk, name: BOOK_NAME[bk] || bk, ml: b.ml?.[home] ?? null, oppMl: b.ml?.[away] ?? null, asof: b.asof || null, spread: b.spread?.[home] ?? null, pHome: null, excluded: null };
-    const d = devig(row.ml, row.oppMl);
-    if (!d) row.excluded = "no valid two-sided moneyline";
+    const row = { book: bk, name: b.lookahead ? "look-ahead line (nflverse)" : BOOK_NAME[bk] || bk, ml: b.ml?.[home] ?? null, oppMl: b.ml?.[away] ?? null, asof: b.asof || null, spread: b.spread?.[home] ?? null, pHome: null, excluded: null };
+    const d = b.lookahead ? null : devig(row.ml, row.oppMl);
+    if (b.lookahead) row.excluded = "look-ahead spread only, no moneyline yet";
+    else if (!d) row.excluded = "no valid two-sided moneyline";
     else if (bk !== "nflverse" && kickoff && row.asof && new Date(row.asof).getTime() >= kickoff) row.excluded = "quoted after kickoff (in-game price)";
     else row.pHome = d.a;
     return row;
@@ -86,7 +87,10 @@ function consensusForGame(key, g) {
   const ref = valid.length ? valid.reduce((a, r) => (Math.abs(r.pHome - pHome) < Math.abs(a.pHome - pHome) ? r : a)) : null;
   const sp = valid.map((r) => r.spread).filter((v) => v != null);
   const asof = valid.length ? valid.map((r) => r.asof).filter(Boolean).sort().pop() || null : null;
-  return { key, away, home, kickoff: g.kickoff || null, rows, valid: valid.length, status: statusFor(valid.length, closing), pHome, ref, spreadHome: sp.length ? roundHalf(median(sp)) : null, asof };
+  // a look-ahead spread (nflverse, days before any book posts a moneyline) is kept apart: it can give a projected
+  // win chance for planning, never a True Win %
+  const lookaheadHome = valid.length ? null : Object.values(books).find((b) => b.lookahead && b.spread?.[home] != null)?.spread?.[home] ?? null;
+  return { key, away, home, kickoff: g.kickoff || null, rows, valid: valid.length, status: statusFor(valid.length, closing), pHome, ref, spreadHome: sp.length ? roundHalf(median(sp)) : null, asof, lookaheadHome };
 }
 // Turn one leg of data/odds.json ({ games: { "AWY@HOM": { kickoff, books: { <book>: { asof, ml, spread } } } } })
 // into per-team lines. Only games with at least one valid two-sided moneyline get a Win %; a spread alone never does.
@@ -95,7 +99,14 @@ function linesFromOdds(legOdds) {
   for (const [key, g] of Object.entries(legOdds?.games || {})) {
     const c = consensusForGame(key, g);
     games[key] = c;
-    if (c.pHome == null) continue;
+    if (c.pHome == null) {
+      if (c.lookaheadHome == null) continue;
+      const w = winFromMargin(-c.lookaheadHome), base = { market: false, lookahead: true, status: "lookahead", n: 0, game: key, refBook: "nflverse" };
+      lines[c.home] = { ...base, win: w, spread: c.lookaheadHome };
+      lines[c.away] = { ...base, win: 1 - w, spread: -c.lookaheadHome };
+      counts.lookahead = (counts.lookahead || 0) + 1;
+      continue;
+    }
     const base = { market: true, status: c.status, n: c.valid, game: key };
     lines[c.home] = { ...base, win: c.pHome, ml: c.ref.ml, oppMl: c.ref.oppMl, refBook: c.ref.name, spread: c.spreadHome };
     lines[c.away] = { ...base, win: 1 - c.pHome, ml: c.ref.oppMl, oppMl: c.ref.ml, refBook: c.ref.name, spread: c.spreadHome == null ? null : -c.spreadHome };
@@ -135,7 +146,7 @@ function buildData({ picks, actuals, odds, ratings }, withPrev = true) {
   const legs = {};
   for (const l of LEGS) {
     const r = linesFromOdds(odds?.legs?.[l.id]);
-    if (r.games) legs[l.id] = { ...r, gamesTotal: Object.keys(OPP[l.id]).length / 2, books: odds.books || [] };
+    if (r.games || r.counts.lookahead) legs[l.id] = { ...r, gamesTotal: Object.keys(OPP[l.id]).length / 2, books: odds.books || [] };
   }
   const data = {
     entries: Array.isArray(picks?.entries) ? picks.entries : [],
@@ -1117,7 +1128,7 @@ export default function CircaSurvivorPlanner() {
   const cur = LEGS.find((l) => l.id === legId);
   const legInfo = data.legs[legId];
   const flags = legInfo ? [legInfo.counts.degraded && `${legInfo.counts.degraded} at 2 books`, legInfo.counts.single && `${legInfo.counts.single} single-book`].filter(Boolean).join(", ") : "";
-  const stamp = legInfo ? `${legInfo.counts.closing === legInfo.games ? "closing lines" : "book consensus"} · ${fmtTime(legInfo.asof)} · ${legInfo.games}/${legInfo.gamesTotal} games${flags ? ` (${flags})` : ""}` : "no lines yet for this leg";
+  const stamp = !legInfo ? "no lines yet for this leg" : !legInfo.games ? `no moneylines yet · look-ahead spreads for ${legInfo.counts.lookahead} games` : `${legInfo.counts.closing === legInfo.games ? "closing lines" : "book consensus"} · ${fmtTime(legInfo.asof)} · ${legInfo.games}/${legInfo.gamesTotal} games${flags ? ` (${flags})` : ""}`;
 
   const Header = ({ top }) => (
     <>
@@ -1139,6 +1150,7 @@ export default function CircaSurvivorPlanner() {
   // books contributing to this leg's lines, for the note under the controls
   const lineNote = (() => {
     if (!legInfo) return "No lines yet for this week";
+    if (!legInfo.games) return `Look-ahead spreads for ${legInfo.counts.lookahead} games · no moneylines yet`;
     const books = new Set();
     for (const g of Object.values(legInfo.detail)) for (const r of g.rows) if (!r.excluded) books.add(r.book);
     const real = [...books].filter((b) => b !== "nflverse").length;
@@ -1269,7 +1281,7 @@ export default function CircaSurvivorPlanner() {
                     const label = !g ? "" : (g.neutral ? "n " : g.home ? "vs " : "@ ") + g.opp;
                     const fav = ln && ln.spread != null && ln.spread < 0 && !dead ? Math.min(1, -ln.spread / 14) : 0;
                     const tip = !g ? `${team} bye` : dead ? `${team} already used (${legLabel(LEGS.find((x) => x.id === usedLeg))})`
-                      : `${legLabel(l)}: ${team} ${g.home || g.neutral ? "vs" : "at"} ${g.opp}${g.neutral ? " (neutral)" : ""}${ln ? ` · ${fmtSp(ln.spread)}${ln.market ? ` · ML ${fmtSp(ln.ml)} / ${fmtSp(ln.oppMl)} · True Win ${pct(ln.win)}` : ln.proj ? ` · projected ${pct(ln.win)} (ratings, not market)` : ""}` : ""}${others ? ` · also picked by entry ${others.split("").join(" and ")}` : ""}${canPick ? "" : activeOut ? " · this entry is out" : " · sign in to change picks"}`;
+                      : `${legLabel(l)}: ${team} ${g.home || g.neutral ? "vs" : "at"} ${g.opp}${g.neutral ? " (neutral)" : ""}${ln ? ` · ${fmtSp(ln.spread)}${ln.market ? ` · ML ${fmtSp(ln.ml)} / ${fmtSp(ln.oppMl)} · True Win ${pct(ln.win)}` : ln.lookahead ? ` · look-ahead line, ${pct(ln.win)} to win (nflverse spread; no moneyline posted yet)` : ln.proj ? ` · projected ${pct(ln.win)} (ratings, not market)` : ""}` : ""}${others ? ` · also picked by entry ${others.split("").join(" and ")}` : ""}${canPick ? "" : activeOut ? " · this entry is out" : " · sign in to change picks"}`;
                     return (
                       <td key={l.id} className={cls} title={tip} style={fav > 0 && !pickHere ? { "--fav": (0.03 + 0.15 * fav).toFixed(3) } : undefined} onClick={() => g && !dead && l.id === legId && setPick(l.id, team)}>
                         {label}
@@ -1304,7 +1316,7 @@ function AuditPanel({ legId, data, params, merr, stats, evNote, map }) {
         <div className="sec">
           <h4>True Win %</h4>
           {leg.games ? <p>Each book's moneyline is de-vigged on its own; the consensus is the median of the books' home-win chances, away = 1 − home. {leg.games}/{leg.gamesTotal} games as of {fmtTime(leg.asof)}. Books asked: {(leg.books || []).map((b) => BOOK_NAME[b] || b).join(", ")}. 3+ books normal, 2 degraded, 1 single-book. Quotes taken after kickoff or 48 h staler than the freshest are left out.</p>
-            : <p>No moneylines for this week yet. Books post them about a week out.</p>}
+            : <p>No moneylines for this week yet. Books post them about a week out.{leg.counts?.lookahead ? ` Until then, ${leg.counts.lookahead} games carry a look-ahead spread from nflverse, which gives a win chance for planning but not a True Win %.` : ""}</p>}
           {evNote && <p><b>EV coverage.</b> {evNote}.</p>}
         </div>
         <div className="sec">

@@ -7,6 +7,18 @@ const p = (ml, opp) => devig(ml, opp).a;
 const K = "2026-09-18T00:15:00Z";
 const bk = (ml, spread, asof = "2026-09-15T00:20:00Z") => ({ asof, ml, spread });
 
+// 0. a look-ahead spread with no moneyline gives a planning line, never a True Win %
+(() => {
+  const la = { kickoff: "2026-11-01T17:00:00Z", books: { nflverse: { asof: "2026-10-06T20:00:00Z", spread: { PIT: -6, CLE: 6 }, lookahead: true } } };
+  const r = linesFromOdds({ games: { "CLE@PIT": la } });
+  ok("look-ahead line has a win chance from the spread", r.lines.PIT?.win > 0.66 && r.lines.PIT.win < 0.68 && near(r.lines.CLE.win, 1 - r.lines.PIT.win), `PIT ${r.lines.PIT?.win?.toFixed(3)}`);
+  ok("look-ahead line is not market and not counted as priced", r.lines.PIT.market === false && r.lines.PIT.lookahead === true && r.lines.PIT.status === "lookahead" && r.games === 0 && r.counts.lookahead === 1);
+  ok("look-ahead row is excluded from the consensus with a reason", /look-ahead/.test(consensusForGame("CLE@PIT", la).rows[0].excluded));
+  const d = buildData({ picks: { entries: [] }, actuals: null, odds: { books: [], legs: { W8: { games: { "CLE@PIT": la } } } }, ratings: null });
+  ok("the app carries it as a line without a True Win %", d.legs.W8.lines.PIT.spread === -6 && d.legs.W8.lines.PIT.market === false);
+  const mixed = { ...la, books: { ...la.books, draftkings: bk({ PIT: -240, CLE: 195 }, { PIT: -6, CLE: 6 }, "2026-10-29T00:00:00Z") } };
+  ok("a real moneyline wins over the look-ahead", linesFromOdds({ games: { "CLE@PIT": mixed } }).lines.PIT.market === true);
+})();
 // 1. four books → median of the two middle home probabilities, away is the complement
 const g4 = { kickoff: K, books: {
   draftkings: bk({ BUF: -205, DET: 170 }, { BUF: -4.5, DET: 4.5 }),

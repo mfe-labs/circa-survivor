@@ -58,25 +58,35 @@ for (const g of games) {
   n++;
 }
 
-// Backfill: a game that has already kicked off and was never captured gets nflverse's closing moneylines,
-// so locked legs still have a full set of market lines for fitting. Never applied to upcoming games.
-let filled = 0;
+// nflverse, two ways. Backfill: a game that has already kicked off and was never captured gets nflverse's closing
+// moneylines, so locked legs still have a full set of market lines for fitting. Look-ahead: nflverse posts next
+// week's spreads days before any book's moneyline reaches the API; until a two-sided moneyline exists, that
+// spread is stored as a look-ahead line (a projected win chance for planning, never a True Win %), refreshed on
+// every run and replaced the moment real prices arrive.
+const hasMl = (g) => Object.values(g?.books || {}).some((b) => b.ml);
+let filled = 0, ahead = 0;
 try {
   for (const g of await loadGames()) {
-    if (g.season !== "2026" || g.awayMl == null || g.homeMl == null) continue;
+    if (g.season !== "2026") continue;
     const legId = legForGame(g.away, g.home); if (!legId) continue;
     const tz = g.gameday >= "2026-11-01" && g.gameday < "2027-03-08" ? "-05:00" : "-04:00";          // kickoff times are US Eastern
     const kickoff = new Date(`${g.gameday}T${g.gametime || "13:00"}:00${tz}`);
-    if (!(kickoff.getTime() <= now)) continue;
-    const leg = (cur.legs[legId] ||= { games: {} });
-    const key = `${g.away}@${g.home}`; if (leg.games[key]) continue;
-    const spread = g.spread == null ? {} : { [g.home]: -g.spread, [g.away]: g.spread };
-    leg.games[key] = { kickoff: kickoff.toISOString(), books: { nflverse: { asof: kickoff.toISOString(), ml: { [g.away]: g.awayMl, [g.home]: g.homeMl }, spread } } };
-    filled++;
+    const key = `${g.away}@${g.home}`;
+    if (hasMl(cur.legs[legId]?.games?.[key])) continue;
+    const leg = () => (cur.legs[legId] ||= { games: {} });
+    if (kickoff.getTime() <= now) {
+      if (g.awayMl == null || g.homeMl == null) continue;
+      const spread = g.spread == null ? {} : { [g.home]: -g.spread, [g.away]: g.spread };
+      leg().games[key] = { kickoff: kickoff.toISOString(), books: { nflverse: { asof: kickoff.toISOString(), ml: { [g.away]: g.awayMl, [g.home]: g.homeMl }, spread } } };
+      filled++;
+    } else if (g.spread != null) {
+      leg().games[key] = { kickoff: kickoff.toISOString(), books: { nflverse: { asof: new Date(now).toISOString(), spread: { [g.home]: -g.spread, [g.away]: g.spread }, lookahead: true } } };
+      ahead++;
+    }
   }
 } catch (e) { console.warn("nflverse backfill skipped:", e.message); }
 cur.prevUpdatedAt = cur.updatedAt || null;
 cur.updatedAt = new Date(now).toISOString();
 writeFileSync(FILE, JSON.stringify(cur, null, 1) + "\n");
-console.log(`stored ${n} upcoming games (${started} already started, left as-is), backfilled ${filled} from nflverse closing lines`);
+console.log(`stored ${n} upcoming games (${started} already started, left as-is), backfilled ${filled} from nflverse closing lines, ${ahead} look-ahead spreads for games without a moneyline yet`);
 console.log("books per game:", Object.entries(perBook).map(([k, v]) => `${k} ${v}/${n}`).join(", ") || "none", skipped.length ? `· skipped: ${skipped.join(", ")}` : "");
