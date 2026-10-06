@@ -40,9 +40,9 @@ each with its own pick. Each team once per entry. Tie = loss. Schedule is hard-c
   week, a sixteenth on four). The Model details panel has the per-team audit table.
 - Before lock the board shows P% as a band: `modelPickRange` jiggles every posted win chance by `LINE_MOVE` =
   0.6 pts of spread (Tue→Sat movement measured across Weeks 2–4) scaled by sqrt(days to lock ÷ 4), re-runs the
-  model 64 times with a fixed seed, also jiggling each team's score by the model's own error (`MODEL_ERR` = 0.3
-  log SD, from its misses on top-two teams at lock in Weeks 1–4; this part does not shrink at lock), and keeps the
-  10th–90th percentile of share and EV. DILI's band is EV's ÷ forfeit.
+  model 96 times with a fixed seed, also jiggling each team's score by the model's own error (`MODEL_ERR_TOP` = 0.1
+  log SD for the model's top pick, `MODEL_ERR` = 0.35 for every other team, from its misses at lock in Weeks 1–4;
+  this part does not shrink at lock), and keeps the 25th–75th percentile (`BAND`) of share and EV. DILI's band is EV's ÷ forfeit.
   Lock is taken as 4 pm PT the day before the leg's `start`.
 
 ## EV

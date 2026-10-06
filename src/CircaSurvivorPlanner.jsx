@@ -450,9 +450,11 @@ function modelPick(legId, data, params) {
 // every team, so the band is stable between renders; it is recomputed only when the data refreshes.
 // Line movement alone barely moves EV or DILI (a better line raises a team's share and its win chance together,
 // and the two cancel), and it is not what produced the Week 4 Ravens miss. So each draw also jiggles every
-// team's score by the model's own error: at lock across Weeks 1–4 the model's share of a top-two team was
-// off by a factor with log SD ≈ 0.3 (Ravens ×1.3, Bucs ×2.1, Chargers ×0.9). That part does not shrink at lock.
-const LINE_MOVE = 0.6, MODEL_ERR = 0.3, RANGE_SAMPLES = 64, LOCK_DAYS = 4;
+// team's score by the model's own error, measured at lock across Weeks 1–4 by where the team sat in the model's
+// own ranking: its top pick has been within a factor of 1.15 every week (log SD ≈ 0.1), while the runner-up
+// has been off by up to ×2.1 (Bucs) and ×1.3 (Ravens), log SD ≈ 0.4. Those parts do not shrink at lock. The
+// band shown is the middle half of the draws (25th–75th percentile).
+const LINE_MOVE = 0.6, MODEL_ERR_TOP = 0.1, MODEL_ERR = 0.35, RANGE_SAMPLES = 96, LOCK_DAYS = 4, BAND = [0.25, 0.75];
 const lockTime = (leg) => new Date(leg.start + "T16:00:00-07:00").getTime() - 24 * 3600 * 1000;   // Saturday 4 pm PT before a Sunday start
 function modelPickRange(legId, data, params, now = Date.now()) {
   return cached(data, "pr", `${legId}|${params.a}|${params.b}|${params.c ?? 0}`, () => {
@@ -462,16 +464,17 @@ function modelPickRange(legId, data, params, now = Date.now()) {
     const av = availability(legId, data);
     const teams = Object.keys(OPP[legId]).map((t) => { const ln = marketLine(legId, t, data); return ln ? { t, z: probit(ln.win), k: Math.exp(-b * fvFor(legId, t, data)) * Math.exp(-c * holidayPressure(legId, t, data, av)) * av[t] } : null; }).filter(Boolean);
     if (!teams.length) return {};
+    const top = teams.reduce((m, x) => (Math.pow(normCdf(x.z), a) * x.k > Math.pow(normCdf(m.z), a) * m.k ? x : m), teams[0]).t;
     const r = seededRng(7), sd = (LINE_MOVE * Math.sqrt(days / LOCK_DAYS)) / MARGIN_SD, acc = Object.fromEntries(teams.map((x) => [x.t, { p: [], ev: [] }]));
     for (let s = 0; s < RANGE_SAMPLES; s++) {
       const rows = {}; let tot = 0;
-      for (const x of teams) { const win = normCdf(x.z + sd * gauss(r)); const v = win >= 0.5 ? Math.pow(win, a) * x.k * Math.exp(MODEL_ERR * gauss(r)) : 0; rows[x.t] = { win, pick: v }; tot += v; }
+      for (const x of teams) { const win = normCdf(x.z + sd * gauss(r)); const v = win >= 0.5 ? Math.pow(win, a) * x.k * Math.exp((x.t === top ? MODEL_ERR_TOP : MODEL_ERR) * gauss(r)) : 0; rows[x.t] = { win, pick: v }; tot += v; }
       for (const t of Object.keys(OPP[legId])) { if (!rows[t]) rows[t] = { win: null, pick: 0 }; else rows[t].pick = tot > 0 ? rows[t].pick / tot : 0; }
       computeEV(legId, rows);
       for (const x of teams) { acc[x.t].p.push(rows[x.t].pick); if (rows[x.t].ev != null) acc[x.t].ev.push(rows[x.t].ev); }
     }
     const q = (xs, f) => { const v = [...xs].sort((p, q) => p - q); return v.length ? v[Math.min(v.length - 1, Math.floor(f * v.length))] : null; };
-    return Object.fromEntries(teams.map((x) => [x.t, { lo: q(acc[x.t].p, 0.1), hi: q(acc[x.t].p, 0.9), evLo: q(acc[x.t].ev, 0.1), evHi: q(acc[x.t].ev, 0.9) }]));
+    return Object.fromEntries(teams.map((x) => [x.t, { lo: q(acc[x.t].p, BAND[0]), hi: q(acc[x.t].p, BAND[1]), evLo: q(acc[x.t].ev, BAND[0]), evHi: q(acc[x.t].ev, BAND[1]) }]));
   });
 }
 // Fit a, b to every leg that has both actuals and lines (grid search).
@@ -1031,7 +1034,7 @@ export default function CircaSurvivorPlanner() {
   const diliTip = (st) => {
     if (st.deadLeg) return `Burning this team leaves nothing eligible for ${legLabel(st.deadLeg)}: DILI 0`;
     const swaps = (st.swaps || []).map((p) => `${legLabel(p.leg)} ${p.from} ${pct(p.fromWin)} → ${p.to} ${pct(p.toWin)}`).join(", ");
-    return `EV ${st.ev.toFixed(2)} ÷ forfeit ${st.forfeit.toFixed(2)} = ${st.dili.toFixed(2)}${st.diliLo != null ? ` (likely ${st.diliLo.toFixed(2)}–${st.diliHi.toFixed(2)} at lock, given line movement and the model's past misses)` : ""} · ${swaps ? `burning it changes your map: ${swaps}` : "not on your projected map, so the forfeit is only the chance it turns into a spot later"}${st.dDili != null ? dTip("was", (st.dili - st.dDili).toFixed(2)) : ""}`;
+    return `EV ${st.ev.toFixed(2)} ÷ forfeit ${st.forfeit.toFixed(2)} = ${st.dili.toFixed(2)}${st.diliLo != null ? ` (likely ${st.diliLo.toFixed(2)}–${st.diliHi.toFixed(2)} at lock (middle half of outcomes))` : ""} · ${swaps ? `burning it changes your map: ${swaps}` : "not on your projected map, so the forfeit is only the chance it turns into a spot later"}${st.dDili != null ? dTip("was", (st.dili - st.dDili).toFixed(2)) : ""}`;
   };
   const dTip = (label, was) => (prevAt ? ` · ${label} ${was} at the previous refresh (${fmtTime(prevAt)})` : "");
   void 0;
@@ -1097,7 +1100,7 @@ export default function CircaSurvivorPlanner() {
     <>
       {top ? <th className="L entry">Entry</th> : <>
         <th className={"L wp" + (sort.key === "wp" ? " sorted" : "")} onClick={() => clickSort("wp")} title={`True Win % — median of each book's no-vig moneyline probability · ${stamp}`}>W%</th>
-        <th className={"L pp" + (sort.key === "pp" ? " sorted" : "")} onClick={() => clickSort("pp")} title="Circa pick popularity: actual once posted; before that the field model, shown as the band it is likely to land in at Saturday's lock, given line movement and how far the model has missed so far">P%</th>
+        <th className={"L pp" + (sort.key === "pp" ? " sorted" : "")} onClick={() => clickSort("pp")} title="Circa pick popularity: actual once posted; before that the field model, shown as the middle half of where it could land at Saturday's lock, given line movement and how far the model has missed so far">P%</th>
         <th className={"L fv" + (sort.key === "fv" ? " sorted" : "")} onClick={() => clickSort("fv")} title="Future value: about how many strong-favorite weeks the team has left after this one">Future</th>
         <th className={"L ev" + (sort.key === "ev" ? " sorted" : "") + (evNote ? " partial" : "")} onClick={() => clickSort("ev")} title={(evNote || `EV for ${legLabel(cur)}`) + (prevAt ? ` · small numbers = change since the previous refresh (${fmtTime(prevAt)})` : "")}>EV{evNote ? "*" : ""}</th>
         <th className={"L dili" + (sort.key === "dili" ? " sorted" : "")} onClick={() => clickSort("dili")} title={`DILI — "do I love it?": this week's EV net of what the team is worth to the rest of this entry's season${prevAt ? ` · small numbers = change since ${fmtTime(prevAt)}` : ""}`}>DILI</th>
@@ -1216,11 +1219,11 @@ export default function CircaSurvivorPlanner() {
               return (
                 <tr key={team} className={usedLeg && usedLeg !== legId ? "gone" : ""}>
                   <td className={"L wp num" + (st.win == null ? " blank" : st.winTop ? " hi" : "") + (st.status === "single" || st.status === "degraded" ? " weak" : "")} title={inLeg ? (st.win == null ? "No two-sided moneyline posted yet for this game" : `${pct(st.win)} — ${STATUS_TEXT[st.status]}${st.status !== "closing" ? ` (${st.n})` : ""} · e.g. ${st.refBook} ${fmtSp(st.ml)} / ${fmtSp(st.oppMl)}${st.dWin != null ? dTip("was", pct(st.win - st.dWin)) : ""}`) : ""}><Num d={st.dWin} kind="pct">{inLeg ? pct(st.win) : ""}</Num></td>
-                  <td className={"L pp num" + (st.pick == null ? " blank" : st.pick > 0.099 ? " warn" : "")} title={inLeg ? (st.act ? "Circa actual" : `field model ${pct(st.pm)}${st.pLo != null ? ` · likely ${pr(st.pLo)}–${pr(st.pHi)} at lock, given line movement and how far the model has missed so far` : ""}${st.dPick != null ? dTip("was", pct(st.pick - st.dPick)) : ""}`) : ""}>{band ? <span className="v"><span className="n rng">{pr(st.pLo)}–{pr(st.pHi)}%</span></span> : <Num d={st.dPick} kind="pct">{inLeg ? (st.pick == null ? "–" : st.pick < 0.005 ? "<1%" : Math.round(st.pick * 100) + "%") : ""}</Num>}</td>
+                  <td className={"L pp num" + (st.pick == null ? " blank" : st.pick > 0.099 ? " warn" : "")} title={inLeg ? (st.act ? "Circa actual" : `field model ${pct(st.pm)}${st.pLo != null ? ` · likely ${pr(st.pLo)}–${pr(st.pHi)} at lock (middle half of outcomes, given line movement and how far the model has missed so far)` : ""}${st.dPick != null ? dTip("was", pct(st.pick - st.dPick)) : ""}`) : ""}>{band ? <span className="v"><span className="n rng">{pr(st.pLo)}–{pr(st.pHi)}%</span></span> : <Num d={st.dPick} kind="pct">{inLeg ? (st.pick == null ? "–" : st.pick < 0.005 ? "<1%" : Math.round(st.pick * 100) + "%") : ""}</Num>}</td>
                   <td className={"L fv num" + (st.fv == null ? " blank" : Math.round(st.fv * 10) / 10 <= 2 ? " hi" : "")} title={st.fv == null ? "No power ratings yet" : `About ${st.fv.toFixed(1)} strong-favorite weeks left after this one (a 75% spot counts ~1, 65% counts ½, 55% a little)`}>
                     <span className="v"><span className="n">{st.fv == null ? "–" : st.fv.toFixed(1)}</span></span>
                   </td>
-                  <td className={"L ev num" + (st.ev == null ? " blank" : st.evTop ? " hi" : "")} title={st.ev != null ? `EV ${st.ev.toFixed(2)}${st.evLo != null ? ` · likely ${st.evLo.toFixed(2)}–${st.evHi.toFixed(2)} at lock, given line movement and the model's past misses` : ""}${st.dEv != null ? dTip("was", (st.ev - st.dEv).toFixed(2)) : ""}` : ""}><Num d={st.dEv} kind="ev">{st.ev == null ? (inLeg ? "–" : "") : st.ev.toFixed(2)}</Num></td>
+                  <td className={"L ev num" + (st.ev == null ? " blank" : st.evTop ? " hi" : "")} title={st.ev != null ? `EV ${st.ev.toFixed(2)}${st.evLo != null ? ` · likely ${st.evLo.toFixed(2)}–${st.evHi.toFixed(2)} at lock (middle half of outcomes)` : ""}${st.dEv != null ? dTip("was", (st.ev - st.dEv).toFixed(2)) : ""}` : ""}><Num d={st.dEv} kind="ev">{st.ev == null ? (inLeg ? "–" : "") : st.ev.toFixed(2)}</Num></td>
                   <td className={"L dili num" + (st.dili == null ? " blank" : st.diliTop ? " hi" : "")} title={st.dili == null ? (inLeg ? (usedLeg ? "Already used" : "Needs an EV") : "") : diliTip(st)}>
                     <Num d={st.dDili} kind="ev">{st.dili == null ? (inLeg ? "–" : "") : st.dili.toFixed(2)}</Num>
                   </td>
