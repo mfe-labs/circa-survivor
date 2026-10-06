@@ -44,7 +44,7 @@ each with its own pick. Each team once per entry. Tie = loss. Schedule is hard-c
   leg, and the in-app editor keeps it. Weeks 1–4 were backfilled from the repo's history (Week 1 from the Sept 14
   snapshot, the earliest). `fvAt(leg, team, data)` returns the frozen value for a locked leg, else `fvFor`, and the
   popularity model and the past-week board use it, so later ratings moves cannot rewrite what the field saw.
-- Before lock the board shows P% as a band: `modelPickRange` jiggles every posted win chance by `LINE_MOVE` =
+- Before lock the P% cell shows the model's estimate and the P%, EV and DILI tooltips show a band: `modelPickRange` jiggles every posted win chance by `LINE_MOVE` =
   0.6 pts of spread (Tue→Sat movement measured across Weeks 2–4) scaled by sqrt(days to lock ÷ 4), re-runs the
   model 96 times with a fixed seed, also jiggling each team's score by the model's own error, re-measured by
   `bandError` on every fit: log SD of actual÷model for the model's top pick (`errTop`) and for every other team

@@ -656,7 +656,6 @@ const CSS = `
 .csp td.L.dili.num { color:var(--ink); font-weight:600; }
 .csp td.L.num .v { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; height:100%; }
 .csp td.L.num .v .n { grid-column:2; }
-.csp td.L.num .v .n.rng { font-size:11px; letter-spacing:-0.02em; }
 .csp td.L.num .d { grid-column:3; justify-self:start; width:0; overflow:visible; white-space:nowrap; padding-left:3px; font-size:9px; font-weight:500; letter-spacing:-0.01em; line-height:1; }
 .csp td.L.num .d.up { color:var(--green-ink); }
 .csp td.L.num .d.down { color:var(--red); }
@@ -864,7 +863,6 @@ const CSS = `
   .csp .controls .ghost, .csp .controls .btn { padding:0 8px; }
   .csp .controls .note { max-width:200px; }
   .csp td.L.num .d { display:none; }
-  .csp td.L.num .v .n.rng { font-size:9.5px; letter-spacing:-0.03em; }
   .csp .audit { padding:12px; max-height:60dvh; }
 
   /* Map: each week is a short card; the reason wraps underneath */
@@ -1125,7 +1123,7 @@ export default function CircaSurvivorPlanner() {
     <>
       {top ? <th className="L entry">Entry</th> : <>
         <th className={"L wp" + (sort.key === "wp" ? " sorted" : "")} onClick={() => clickSort("wp")} title={`True Win % — median of each book's no-vig moneyline probability · ${stamp}`}>W%</th>
-        <th className={"L pp" + (sort.key === "pp" ? " sorted" : "")} onClick={() => clickSort("pp")} title="Circa pick popularity: actual once posted; before that the field model, shown as the middle half of where it could land at Saturday's lock, given line movement and how far the model has missed so far">P%</th>
+        <th className={"L pp" + (sort.key === "pp" ? " sorted" : "")} onClick={() => clickSort("pp")} title="Circa pick popularity: actual once posted; before that the field model, the tooltip shows the middle half of where it could land at Saturday's lock, given line movement and how far the model has missed so far">P%</th>
         <th className={"L fv" + (sort.key === "fv" ? " sorted" : "")} onClick={() => clickSort("fv")} title="Future value: about how many strong-favorite weeks the team has left after this one">Future</th>
         <th className={"L ev" + (sort.key === "ev" ? " sorted" : "") + (evNote ? " partial" : "")} onClick={() => clickSort("ev")} title={(evNote || `EV for ${legLabel(cur)}`) + (prevAt ? ` · small numbers = change since the previous refresh (${fmtTime(prevAt)})` : "")}>EV{evNote ? "*" : ""}</th>
         <th className={"L dili" + (sort.key === "dili" ? " sorted" : "")} onClick={() => clickSort("dili")} title={`DILI — "do I love it?": this week's EV net of what the team is worth to the rest of this entry's season${prevAt ? ` · small numbers = change since ${fmtTime(prevAt)}` : ""}`}>DILI</th>
@@ -1239,12 +1237,11 @@ export default function CircaSurvivorPlanner() {
               const usedLeg = usedBy[team];
               const st = stats[team];
               const inLeg = !!OPP[legId][team];
-              const band = inLeg && !st.act && st.pLo != null && st.pHi - st.pLo >= 0.02;
               const pr = (v) => Math.round(100 * v);
               return (
                 <tr key={team} className={usedLeg && usedLeg !== legId ? "gone" : ""}>
                   <td className={"L wp num" + (st.win == null ? " blank" : st.winTop ? " hi" : "") + (st.status === "single" || st.status === "degraded" ? " weak" : "")} title={inLeg ? (st.win == null ? "No two-sided moneyline posted yet for this game" : `${pct(st.win)} — ${STATUS_TEXT[st.status]}${st.status !== "closing" ? ` (${st.n})` : ""} · e.g. ${st.refBook} ${fmtSp(st.ml)} / ${fmtSp(st.oppMl)}${st.dWin != null ? dTip("was", pct(st.win - st.dWin)) : ""}`) : ""}><Num d={st.dWin} kind="pct">{inLeg ? pct(st.win) : ""}</Num></td>
-                  <td className={"L pp num" + (st.pick == null ? " blank" : st.pick > 0.099 ? " warn" : "")} title={inLeg ? (st.act ? "Circa actual" : `field model ${pct(st.pm)}${st.pLo != null ? ` · likely ${pr(st.pLo)}–${pr(st.pHi)} at lock (middle half of outcomes, given line movement and how far the model has missed so far)` : ""}${st.dPick != null ? dTip("was", pct(st.pick - st.dPick)) : ""}`) : ""}>{band ? <span className="v"><span className="n rng">{pr(st.pLo)}–{pr(st.pHi)}%</span></span> : <Num d={st.dPick} kind="pct">{inLeg ? (st.pick == null ? "–" : st.pick < 0.005 ? "<1%" : Math.round(st.pick * 100) + "%") : ""}</Num>}</td>
+                  <td className={"L pp num" + (st.pick == null ? " blank" : st.pick > 0.099 ? " warn" : "")} title={inLeg ? (st.act ? "Circa actual" : `field model ${pct(st.pm)}${st.pLo != null ? ` · likely ${pr(st.pLo)}–${pr(st.pHi)} at lock (middle half of outcomes, given line movement and how far the model has missed so far)` : ""}${st.dPick != null ? dTip("was", pct(st.pick - st.dPick)) : ""}`) : ""}><Num d={st.dPick} kind="pct">{inLeg ? (st.pick == null ? "–" : st.pick < 0.005 ? "<1%" : Math.round(st.pick * 100) + "%") : ""}</Num></td>
                   <td className={"L fv num" + (st.fv == null ? " blank" : Math.round(st.fv * 10) / 10 <= 2 ? " hi" : "")} title={st.fv == null ? "No power ratings yet" : `About ${st.fv.toFixed(1)} strong-favorite weeks left after this one (a 75% spot counts ~1, 65% counts ½, 55% a little)`}>
                     <span className="v"><span className="n">{st.fv == null ? "–" : st.fv.toFixed(1)}</span></span>
                   </td>
