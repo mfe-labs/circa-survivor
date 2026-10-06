@@ -25,8 +25,11 @@ jobs:
         with:
           node-version: 22
       - run: sudo apt-get install -y -qq poppler-utils >/dev/null
+      - run: npm ci
       - name: Picks from Circa's Selections PDF, results from ESPN
         run: node scripts/fetch-actuals.mjs
+      - name: Freeze future value for any week that just locked
+        run: npm run freeze-fv
       - name: Commit and redeploy
         env:
           GH_TOKEN: ${{ github.token }}
@@ -42,6 +45,6 @@ jobs:
             if git push -q origin HEAD:main; then gh workflow run deploy.yml; exit 0; fi
             echo "push raced with another run, recomputing on top of main ($i)"
             git fetch -q origin main && git reset -q --hard origin/main
-            node scripts/fetch-actuals.mjs
+            node scripts/fetch-actuals.mjs && npm run freeze-fv
           done
           echo "could not push after 3 attempts"; exit 1

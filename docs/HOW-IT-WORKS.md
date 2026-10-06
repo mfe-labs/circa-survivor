@@ -38,11 +38,18 @@ each with its own pick. Each team once per entry. Tie = loss. Schedule is hard-c
   weighted by how near that week is (0.8 per week), and zero once it passes. `a`, `b`, `c` are fit by coordinate
   descent against every leg with actuals, with a prior penalty of `PRIOR_WEIGHT / legs²` (full guardrail on one
   week, a sixteenth on four). The Model details panel has the per-team audit table.
+- Each locked leg also carries `fv` (every team's future value as it stood at that Saturday's lock, 2 dp) and
+  `fvAt` (the ratings timestamp used). `scripts/freeze-fv.jsx` writes it once, in the results job right after
+  fetch-actuals, bundled with esbuild (`npm run freeze-fv`); fetch-actuals carries it through later rewrites of the
+  leg, and the in-app editor keeps it. Weeks 1–4 were backfilled from the repo's history (Week 1 from the Sept 14
+  snapshot, the earliest). `fvAt(leg, team, data)` returns the frozen value for a locked leg, else `fvFor`, and the
+  popularity model and the past-week board use it, so later ratings moves cannot rewrite what the field saw.
 - Before lock the board shows P% as a band: `modelPickRange` jiggles every posted win chance by `LINE_MOVE` =
   0.6 pts of spread (Tue→Sat movement measured across Weeks 2–4) scaled by sqrt(days to lock ÷ 4), re-runs the
-  model 96 times with a fixed seed, also jiggling each team's score by the model's own error (`MODEL_ERR_TOP` = 0.1
-  log SD for the model's top pick, `MODEL_ERR` = 0.35 for every other team, from its misses at lock in Weeks 1–4;
-  this part does not shrink at lock), and keeps the 25th–75th percentile (`BAND`) of share and EV. DILI's band is EV's ÷ forfeit.
+  model 96 times with a fixed seed, also jiggling each team's score by the model's own error, re-measured by
+  `bandError` on every fit: log SD of actual÷model for the model's top pick (`errTop`) and for every other team
+  with ≥3% either way (`errOther`), shrunk toward 0.1 / 0.35 with 3 pseudo-points, clamped to [0.05, 0.6]; this
+  part does not shrink at lock. Keeps the 25th–75th percentile (`BAND`) of share and EV. DILI's band is EV's ÷ forfeit.
   Lock is taken as 4 pm PT the day before the leg's `start`.
 
 ## EV

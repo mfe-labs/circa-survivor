@@ -221,6 +221,14 @@ const cached = (data, bucket, key, make) => {
   if (!b.has(key)) b.set(key, make());
   return b.get(key);
 };
+// Future value as the field saw it. Once a week locks, the results job freezes every team's future value in
+// data/actuals.json (legs[id].fv), computed from the ratings and lines of that Saturday. The popularity fit and
+// the past-week board use that, so a team's later rise or fall in the ratings cannot rewrite what the field was
+// looking at when it picked. Open weeks use the live projection.
+function fvAt(legId, team, data) {
+  const v = data?.actuals?.[legId]?.fv?.[team];
+  return v != null ? v : fvFor(legId, team, data);
+}
 function fvFor(legId, team, data) {
   return cached(data, "fv", legId + "|" + team, () => {
     const idx = LEGS.findIndex((l) => l.id === legId);
@@ -434,7 +442,7 @@ function modelPick(legId, data, params) {
   let tot = 0;
   for (const t of Object.keys(OPP[legId])) {
     const ln = marketLine(legId, t, data); if (!ln || ln.win < 0.5) continue;
-    const v = Math.pow(ln.win, a) * Math.exp(-b * fvFor(legId, t, data)) * Math.exp(-c * holidayPressure(legId, t, data, av)) * av[t];
+    const v = Math.pow(ln.win, a) * Math.exp(-b * fvAt(legId, t, data)) * Math.exp(-c * holidayPressure(legId, t, data, av)) * av[t];
     sc[t] = v; tot += v;
   }
   const out = {};
@@ -454,21 +462,38 @@ function modelPick(legId, data, params) {
 // own ranking: its top pick has been within a factor of 1.15 every week (log SD ≈ 0.1), while the runner-up
 // has been off by up to ×2.1 (Bucs) and ×1.3 (Ravens), log SD ≈ 0.4. Those parts do not shrink at lock. The
 // band shown is the middle half of the draws (25th–75th percentile).
+// The two error sizes are re-measured from the fitted model's own misses every time a week's picks arrive
+// (bandError), shrunk toward these defaults while there are only a few weeks to measure from.
 const LINE_MOVE = 0.6, MODEL_ERR_TOP = 0.1, MODEL_ERR = 0.35, RANGE_SAMPLES = 96, LOCK_DAYS = 4, BAND = [0.25, 0.75];
+const ERR_PSEUDO = 3, ERR_MIN = 0.05, ERR_MAX = 0.6;
+function bandError(data, params, legs) {
+  const top = [], other = [];
+  for (const id of legs) {
+    const act = data.actuals[id], tot = Object.values(act.picks).reduce((x, y) => x + y, 0), m = modelPick(id, data, params);
+    const best = Object.keys(m).sort((x, y) => m[y] - m[x])[0]; if (!best) continue;
+    for (const t of Object.keys(m)) {
+      const s = (act.picks[t] || 0) / tot;
+      if (t === best) top.push(Math.log((s + 0.005) / (m[t] + 0.005)));
+      else if (m[t] >= 0.03 || s >= 0.03) other.push(Math.log((s + 0.005) / (m[t] + 0.005)));
+    }
+  }
+  const sd = (xs, d0) => Math.min(ERR_MAX, Math.max(ERR_MIN, Math.sqrt((xs.reduce((a, x) => a + x * x, 0) + ERR_PSEUDO * d0 * d0) / (xs.length + ERR_PSEUDO))));
+  return { errTop: +sd(top, MODEL_ERR_TOP).toFixed(3), errOther: +sd(other, MODEL_ERR).toFixed(3), nTop: top.length, nOther: other.length };
+}
 const lockTime = (leg) => new Date(leg.start + "T16:00:00-07:00").getTime() - 24 * 3600 * 1000;   // Saturday 4 pm PT before a Sunday start
 function modelPickRange(legId, data, params, now = Date.now()) {
-  return cached(data, "pr", `${legId}|${params.a}|${params.b}|${params.c ?? 0}`, () => {
-    const { a, b, c = 0 } = params;
+  return cached(data, "pr", `${legId}|${params.a}|${params.b}|${params.c ?? 0}|${params.errTop ?? ""}|${params.errOther ?? ""}`, () => {
+    const { a, b, c = 0, errTop = MODEL_ERR_TOP, errOther = MODEL_ERR } = params;
     const leg = LEGS.find((l) => l.id === legId);
     const days = Math.min(LOCK_DAYS, Math.max(0.25, (lockTime(leg) - now) / 864e5));
     const av = availability(legId, data);
-    const teams = Object.keys(OPP[legId]).map((t) => { const ln = marketLine(legId, t, data); return ln ? { t, z: probit(ln.win), k: Math.exp(-b * fvFor(legId, t, data)) * Math.exp(-c * holidayPressure(legId, t, data, av)) * av[t] } : null; }).filter(Boolean);
+    const teams = Object.keys(OPP[legId]).map((t) => { const ln = marketLine(legId, t, data); return ln ? { t, z: probit(ln.win), k: Math.exp(-b * fvAt(legId, t, data)) * Math.exp(-c * holidayPressure(legId, t, data, av)) * av[t] } : null; }).filter(Boolean);
     if (!teams.length) return {};
     const top = teams.reduce((m, x) => (Math.pow(normCdf(x.z), a) * x.k > Math.pow(normCdf(m.z), a) * m.k ? x : m), teams[0]).t;
     const r = seededRng(7), sd = (LINE_MOVE * Math.sqrt(days / LOCK_DAYS)) / MARGIN_SD, acc = Object.fromEntries(teams.map((x) => [x.t, { p: [], ev: [] }]));
     for (let s = 0; s < RANGE_SAMPLES; s++) {
       const rows = {}; let tot = 0;
-      for (const x of teams) { const win = normCdf(x.z + sd * gauss(r)); const v = win >= 0.5 ? Math.pow(win, a) * x.k * Math.exp((x.t === top ? MODEL_ERR_TOP : MODEL_ERR) * gauss(r)) : 0; rows[x.t] = { win, pick: v }; tot += v; }
+      for (const x of teams) { const win = normCdf(x.z + sd * gauss(r)); const v = win >= 0.5 ? Math.pow(win, a) * x.k * Math.exp((x.t === top ? errTop : errOther) * gauss(r)) : 0; rows[x.t] = { win, pick: v }; tot += v; }
       for (const t of Object.keys(OPP[legId])) { if (!rows[t]) rows[t] = { win: null, pick: 0 }; else rows[t].pick = tot > 0 ? rows[t].pick / tot : 0; }
       computeEV(legId, rows);
       for (const x of teams) { acc[x.t].p.push(rows[x.t].pick); if (rows[x.t].ev != null) acc[x.t].ev.push(rows[x.t].ev); }
@@ -517,7 +542,7 @@ function fitParams(data) {
     for (let c = 0; c <= 6; c += 0.25) { const sc = score(cur.a, cur.b, c); if (!bc || sc < bc.sc) bc = { c, sc }; }
     cur = { ...cur, c: bc.c };
   }
-  return { ...cur, err: miss(cur.a, cur.b, cur.c), legs: legs.length };
+  return { ...cur, err: miss(cur.a, cur.b, cur.c), legs: legs.length, ...bandError(data, cur, legs) };
 }
 // mean L1 error of the model vs Circa actuals on legs where both exist
 function modelError(data, params) {
@@ -542,7 +567,7 @@ export function entryStatus(entry, actualLegs) {
   return { alive: true, leg: null };
 }
 
-export { modelPickRange, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
+export { modelPickRange, fvAt, bandError, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
 
 const CSS = `
 /* ---- tokens: paper, ink, one green ---- */
@@ -1052,7 +1077,7 @@ export default function CircaSurvivorPlanner() {
         pick: (act || hasModel) ? (pick[t] ?? (disp ? 0 : null)) : null, spread: disp ? disp.spread : null, proj: disp ? disp.proj : false, pm: modelP[t], act: !!act };
     }
     const ev = computeEV(legId, rows);
-    for (const t of ALL_TEAMS) rows[t].fv = data.ratings ? fvFor(legId, t, data) : null;
+    for (const t of ALL_TEAMS) rows[t].fv = data.ratings || act?.fv ? fvAt(legId, t, data) : null;
     if (!act && hasModel) { const rg = modelPickRange(legId, data, params); for (const t of ALL_TEAMS) if (rg[t]) Object.assign(rows[t], { pLo: rg[t].lo, pHi: rg[t].hi, evLo: rg[t].evLo, evHi: rg[t].evHi }); }
     return { rows, ev };
   }
@@ -1288,7 +1313,7 @@ function AuditPanel({ legId, data, params, merr, stats, evNote, map }) {
         <div className="sec">
           <h4>P% — pick popularity</h4>
           {act ? <p>Locked week: P% is Circa's posted distribution.</p>
-            : <p>Field model <code>win^{params.a} × e^(−{params.b} × future value) × e^(−{params.c ?? 0} × holiday pressure) × availability</code>, normalized over favored teams. Fit on {params.legs} week{params.legs === 1 ? "" : "s"} of Circa actuals, weighting each team's miss by its share{merr ? <>; average miss so far {pc(merr.err)} per team</> : null}. Holiday pressure is how scarce an upcoming holiday pool is and how close it is; with {params.c ? "the weight the data has chosen" : "the weight still at zero, since nothing in the data yet says the field is saving holiday teams"}.</p>}
+            : <p>Field model <code>win^{params.a} × e^(−{params.b} × future value) × e^(−{params.c ?? 0} × holiday pressure) × availability</code>, normalized over favored teams. Fit on {params.legs} week{params.legs === 1 ? "" : "s"} of Circa actuals, weighting each team's miss by its share{merr ? <>; average miss so far {pc(merr.err)} per team</> : null}. Holiday pressure is how scarce an upcoming holiday pool is and how close it is; with {params.c ? "the weight the data has chosen" : "the weight still at zero, since nothing in the data yet says the field is saving holiday teams"}. The fit uses each past week's future values as they stood at that week's lock, not today's. The P% band re-runs the model over line movement and the model's own misses so far: a factor of about ×{Math.exp(params.errTop ?? 0.1).toFixed(2)} on its top pick and ×{Math.exp(params.errOther ?? 0.35).toFixed(2)} on everyone else, measured on {params.nTop ?? 0} weeks.</p>}
         </div>
         <div className="sec">
           <h4>DILI — do I love it?</h4>
@@ -1628,7 +1653,7 @@ function LegEditor({ legId, current, onSave, onCancel }) {
       if (n > 0) picks[t] = n;
       if (rows[t].r === "won") won.push(t); else if (rows[t].r === "lost") lost.push(t); else if (rows[t].r === "pending") pending.push(t);
     }
-    onSave({ asOf: new Date().toLocaleDateString([], { month: "short", day: "numeric" }), picks, won, lost, pending });
+    onSave({ ...(current || {}), asOf: new Date().toLocaleDateString([], { month: "short", day: "numeric" }), picks, won, lost, pending });
   };
   // quick fills: mark every team with entries but no result
   const fillRest = (r) => setRows((p) => { const q = { ...p }; for (const t of teams) if (!q[t].r) q[t] = { ...q[t], r }; return q; });

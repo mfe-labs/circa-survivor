@@ -71,6 +71,7 @@ for (const leg of LEGS) {
     (r === "won" ? won : r === "lost" ? lost : pending).push(t);
   }
   const next = { asOf: new Date(now).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Los_Angeles" }) + (pending.length ? ` (${pending.length} pending)` : " (final)"), picks, won, lost, pending, source };
+  if (cur?.fv) { next.fv = cur.fv; next.fvAt = cur.fvAt; }                               // frozen at lock by freeze-fv, never recomputed
   if (JSON.stringify({ ...next, asOf: 0 }) !== JSON.stringify({ ...(cur || {}), asOf: 0 })) { actuals.legs[leg.id] = next; changed = true; }
   console.log(`${leg.id}: ${won.length} won, ${lost.length} lost, ${pending.length} pending`);
 }

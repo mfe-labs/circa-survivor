@@ -1,5 +1,5 @@
 // Field timeline + popularity model on the real data files.
-import { buildData, fieldTimeline, modelPick, modelPickRange, fitParams, availability } from "../src/CircaSurvivorPlanner.jsx";
+import { buildData, fieldTimeline, modelPick, modelPickRange, fitParams, availability, fvAt } from "../src/CircaSurvivorPlanner.jsx";
 import { OPP } from "../src/schedule.js";
 import picks from "../data/picks.json";
 import actuals from "../data/actuals.json";
@@ -33,6 +33,16 @@ if (legWithLines) {
 const params = fitParams(data);
 ok("fitParams returns a,b", Number.isFinite(params.a) && Number.isFinite(params.b), `a=${params.a} b=${params.b} legs=${params.legs}`);
 // with only a week or two of actuals the knobs stay near the prior (8 / 1.5) instead of running to a corner
+// frozen future value: every locked week carries the numbers the field saw, and the fit uses them
+(() => {
+  const locked = Object.keys(actuals.legs).filter((id) => OPP[id]);
+  ok("every locked week has frozen future value for all its teams", locked.every((id) => actuals.legs[id].fv && Object.keys(OPP[id]).every((tm) => Number.isFinite(actuals.legs[id].fv[tm])) && actuals.legs[id].fvAt), locked.join(","));
+  const flat = buildData({ picks, actuals, odds, ratings: { ...ratings, ratings: Object.fromEntries(Object.keys(ratings.ratings).map((tm) => [tm, 0])) } });
+  const id = locked[0], a = modelPick(id, data, params), f = modelPick(id, flat, params);
+  ok("a locked week's model P% ignores today's ratings", Object.keys(a).every((tm) => Math.abs(a[tm] - f[tm]) < 1e-12), `${id}: frozen fv ${fvAt(id, "BAL", data)} vs live ${fvAt(id, "BAL", flat)}`);
+  ok("an open week still uses the live projection", (() => { const open = Object.keys(OPP).find((x) => !actuals.legs[x]); return open ? fvAt(open, "BAL", data) !== fvAt(open, "BAL", flat) : true; })());
+  ok("the fit reports its measured band errors", params.errTop >= 0.05 && params.errTop <= 0.6 && params.errOther >= 0.05 && params.errOther <= 0.6 && params.errTop < params.errOther && params.nTop === locked.length, `top ${params.errTop} (${params.nTop}) others ${params.errOther} (${params.nOther})`);
+})();
 // P% band: the model re-run over typical line movement; stable, brackets the point estimate, sane width
 (() => {
   const leg = Object.keys(OPP).find((id) => !actuals.legs[id] && Object.keys(modelPick(id, data, params)).length);
