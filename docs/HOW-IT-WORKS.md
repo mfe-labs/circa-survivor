@@ -36,7 +36,14 @@ each with its own pick. Each team once per entry. Tie = loss. Schedule is hard-c
 - Otherwise the **field model** `win^a · e^(−b·FV) · e^(−c·HP) · availability`, normalized over favored teams.
   `HP` (holiday pressure) is the scarcity of each upcoming holiday pool (1/teams still available to the field)
   weighted by how near that week is (0.8 per week), and zero once it passes. `a`, `b`, `c` are fit by coordinate
-  descent against every leg with actuals. Click the "P% = …" button for the per-team audit table.
+  descent against every leg with actuals, with a prior penalty of `PRIOR_WEIGHT / legs²` (full guardrail on one
+  week, a sixteenth on four). The Model details panel has the per-team audit table.
+- Before lock the board shows P% as a band: `modelPickRange` jiggles every posted win chance by `LINE_MOVE` =
+  0.6 pts of spread (Tue→Sat movement measured across Weeks 2–4) scaled by sqrt(days to lock ÷ 4), re-runs the
+  model 64 times with a fixed seed, also jiggling each team's score by the model's own error (`MODEL_ERR` = 0.3
+  log SD, from its misses on top-two teams at lock in Weeks 1–4; this part does not shrink at lock), and keeps the
+  10th–90th percentile of share and EV. DILI's band is EV's ÷ forfeit.
+  Lock is taken as 4 pm PT the day before the leg's `start`.
 
 ## EV
 `EV = W / (P + Σ over other games of P·W)`, then scaled so the pick-weighted average = 1.00 (Atlas / SurvivorGrid convention).

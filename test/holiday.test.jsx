@@ -35,5 +35,5 @@ ok("c = 0 leaves the old model untouched", (() => { const a = modelPick("W2", da
 
 const fit = fitParams(data);
 ok("the fit reports all three knobs", Number.isFinite(fit.a) && Number.isFinite(fit.b) && Number.isFinite(fit.c), `a=${fit.a} b=${fit.b} c=${fit.c}`);
-ok("with no holiday signal yet, the fit leaves it at zero", fit.c === 0, "September data cannot see the field saving November teams");
+ok("with little holiday signal yet, the fit keeps the knob small", fit.c <= 1, `c=${fit.c}: early-season data can barely see the field saving holiday teams`);
 if (fails) { console.log(`${fails} FAILED`); process.exit(1); }

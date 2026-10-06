@@ -441,6 +441,39 @@ function modelPick(legId, data, params) {
   for (const t of Object.keys(sc)) out[t] = tot > 0 ? sc[t] / tot : 0;
   return out;
 }
+// Where P% could land by Saturday's lock. Lines keep moving until then, and the model raises win chance to a
+// high power, so a point of line movement swings the biggest favorites by several points of share. Every
+// team's win chance is jiggled by the typical movement of a posted line between Tuesday and Saturday's lock
+// (LINE_MOVE points of spread, measured across Weeks 2–4: 0.45, 0.63 and 0.60), shrinking with the square
+// root of the days still to go, so the band narrows through the week. The model is re-run on each draw and
+// the 10th–90th percentile of each team's share, and of its EV, is kept. Fixed seed and the same draws for
+// every team, so the band is stable between renders; it is recomputed only when the data refreshes.
+// Line movement alone barely moves EV or DILI (a better line raises a team's share and its win chance together,
+// and the two cancel), and it is not what produced the Week 4 Ravens miss. So each draw also jiggles every
+// team's score by the model's own error: at lock across Weeks 1–4 the model's share of a top-two team was
+// off by a factor with log SD ≈ 0.3 (Ravens ×1.3, Bucs ×2.1, Chargers ×0.9). That part does not shrink at lock.
+const LINE_MOVE = 0.6, MODEL_ERR = 0.3, RANGE_SAMPLES = 64, LOCK_DAYS = 4;
+const lockTime = (leg) => new Date(leg.start + "T16:00:00-07:00").getTime() - 24 * 3600 * 1000;   // Saturday 4 pm PT before a Sunday start
+function modelPickRange(legId, data, params, now = Date.now()) {
+  return cached(data, "pr", `${legId}|${params.a}|${params.b}|${params.c ?? 0}`, () => {
+    const { a, b, c = 0 } = params;
+    const leg = LEGS.find((l) => l.id === legId);
+    const days = Math.min(LOCK_DAYS, Math.max(0.25, (lockTime(leg) - now) / 864e5));
+    const av = availability(legId, data);
+    const teams = Object.keys(OPP[legId]).map((t) => { const ln = marketLine(legId, t, data); return ln ? { t, z: probit(ln.win), k: Math.exp(-b * fvFor(legId, t, data)) * Math.exp(-c * holidayPressure(legId, t, data, av)) * av[t] } : null; }).filter(Boolean);
+    if (!teams.length) return {};
+    const r = seededRng(7), sd = (LINE_MOVE * Math.sqrt(days / LOCK_DAYS)) / MARGIN_SD, acc = Object.fromEntries(teams.map((x) => [x.t, { p: [], ev: [] }]));
+    for (let s = 0; s < RANGE_SAMPLES; s++) {
+      const rows = {}; let tot = 0;
+      for (const x of teams) { const win = normCdf(x.z + sd * gauss(r)); const v = win >= 0.5 ? Math.pow(win, a) * x.k * Math.exp(MODEL_ERR * gauss(r)) : 0; rows[x.t] = { win, pick: v }; tot += v; }
+      for (const t of Object.keys(OPP[legId])) { if (!rows[t]) rows[t] = { win: null, pick: 0 }; else rows[t].pick = tot > 0 ? rows[t].pick / tot : 0; }
+      computeEV(legId, rows);
+      for (const x of teams) { acc[x.t].p.push(rows[x.t].pick); if (rows[x.t].ev != null) acc[x.t].ev.push(rows[x.t].ev); }
+    }
+    const q = (xs, f) => { const v = [...xs].sort((p, q) => p - q); return v.length ? v[Math.min(v.length - 1, Math.floor(f * v.length))] : null; };
+    return Object.fromEntries(teams.map((x) => [x.t, { lo: q(acc[x.t].p, 0.1), hi: q(acc[x.t].p, 0.9), evLo: q(acc[x.t].ev, 0.1), evHi: q(acc[x.t].ev, 0.9) }]));
+  });
+}
 // Fit a, b to every leg that has both actuals and lines (grid search).
 // The miss on each team is weighted by that team's actual share (plus a small floor so ignored teams still
 // count a little), because EV depends almost entirely on the few teams the field piles onto.
@@ -449,7 +482,9 @@ function modelPick(legId, data, params) {
 // The prior stops an early-season fit chasing one odd week. Each knob is measured against a plausible
 // SPREAD, not against its own size: dividing by the value itself made any movement in b (which starts near
 // 0.15) cost hundreds of times more than the error it saved, so b was frozen rather than restrained. The
-// error term sums over legs, so the prior weakens on its own as weeks accumulate.
+// The weight is divided by the square of the number of weeks fitted: one week keeps the full guardrail, four
+// weeks leave a sixteenth of it. Backtested week by week (fit on earlier weeks, predict the next) this matched
+// an unguarded fit's gains in Weeks 3 and 4 without its Week 2 damage.
 const PRIOR = { a: 8, b: 0.15, c: 0 };
 const PRIOR_SPREAD = { a: 6, b: 0.25, c: 1.5 };
 const PRIOR_WEIGHT = 0.03;
@@ -466,7 +501,8 @@ function fitParams(data) {
     }
     return err;
   };
-  const score = (a, b, c) => miss(a, b, c) + PRIOR_WEIGHT * (((a - PRIOR.a) / PRIOR_SPREAD.a) ** 2 + ((b - PRIOR.b) / PRIOR_SPREAD.b) ** 2 + ((c - PRIOR.c) / PRIOR_SPREAD.c) ** 2);
+  const w = PRIOR_WEIGHT / (legs.length * legs.length);
+  const score = (a, b, c) => miss(a, b, c) + w * (((a - PRIOR.a) / PRIOR_SPREAD.a) ** 2 + ((b - PRIOR.b) / PRIOR_SPREAD.b) ** 2 + ((c - PRIOR.c) / PRIOR_SPREAD.c) ** 2);
   // Coordinate descent rather than a three-way grid: (a, b) together, then c, twice. Same answer on a
   // surface this smooth, without multiplying the work by the size of the c grid.
   let cur = { ...PRIOR };
@@ -503,7 +539,7 @@ export function entryStatus(entry, actualLegs) {
   return { alive: true, leg: null };
 }
 
-export { linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
+export { modelPickRange, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
 
 const CSS = `
 /* ---- tokens: paper, ink, one green ---- */
@@ -592,6 +628,7 @@ const CSS = `
 .csp td.L.dili.num { color:var(--ink); font-weight:600; }
 .csp td.L.num .v { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; height:100%; }
 .csp td.L.num .v .n { grid-column:2; }
+.csp td.L.num .v .n.rng { font-size:11px; letter-spacing:-0.02em; }
 .csp td.L.num .d { grid-column:3; justify-self:start; width:0; overflow:visible; white-space:nowrap; padding-left:3px; font-size:9px; font-weight:500; letter-spacing:-0.01em; line-height:1; }
 .csp td.L.num .d.up { color:var(--green-ink); }
 .csp td.L.num .d.down { color:var(--red); }
@@ -799,6 +836,7 @@ const CSS = `
   .csp .controls .ghost, .csp .controls .btn { padding:0 8px; }
   .csp .controls .note { max-width:200px; }
   .csp td.L.num .d { display:none; }
+  .csp td.L.num .v .n.rng { font-size:9.5px; letter-spacing:-0.03em; }
   .csp .audit { padding:12px; max-height:60dvh; }
 
   /* Map: each week is a short card; the reason wraps underneath */
@@ -958,6 +996,7 @@ export default function CircaSurvivorPlanner() {
   const statsAll = useMemo(() => {
     const cur = computeStats(legId, data, params);
     const map = computeDili(legId, cur.rows, data, burned, params);
+    for (const t of ALL_TEAMS) { const r = cur.rows[t]; if (r.dili != null && r.evLo != null && Number.isFinite(r.forfeit)) { r.diliLo = r.evLo / r.forfeit; r.diliHi = r.evHi / r.forfeit; } }
     const prev = data.prev ? computeStats(legId, data.prev, params) : null;
     if (prev) {
       computeDili(legId, prev.rows, data.prev, burned, params);
@@ -992,7 +1031,7 @@ export default function CircaSurvivorPlanner() {
   const diliTip = (st) => {
     if (st.deadLeg) return `Burning this team leaves nothing eligible for ${legLabel(st.deadLeg)}: DILI 0`;
     const swaps = (st.swaps || []).map((p) => `${legLabel(p.leg)} ${p.from} ${pct(p.fromWin)} → ${p.to} ${pct(p.toWin)}`).join(", ");
-    return `EV ${st.ev.toFixed(2)} ÷ forfeit ${st.forfeit.toFixed(2)} = ${st.dili.toFixed(2)} · ${swaps ? `burning it changes your map: ${swaps}` : "not on your projected map, so the forfeit is only the chance it turns into a spot later"}${st.dDili != null ? dTip("was", (st.dili - st.dDili).toFixed(2)) : ""}`;
+    return `EV ${st.ev.toFixed(2)} ÷ forfeit ${st.forfeit.toFixed(2)} = ${st.dili.toFixed(2)}${st.diliLo != null ? ` (likely ${st.diliLo.toFixed(2)}–${st.diliHi.toFixed(2)} at lock, given line movement and the model's past misses)` : ""} · ${swaps ? `burning it changes your map: ${swaps}` : "not on your projected map, so the forfeit is only the chance it turns into a spot later"}${st.dDili != null ? dTip("was", (st.dili - st.dDili).toFixed(2)) : ""}`;
   };
   const dTip = (label, was) => (prevAt ? ` · ${label} ${was} at the previous refresh (${fmtTime(prevAt)})` : "");
   void 0;
@@ -1011,6 +1050,7 @@ export default function CircaSurvivorPlanner() {
     }
     const ev = computeEV(legId, rows);
     for (const t of ALL_TEAMS) rows[t].fv = data.ratings ? fvFor(legId, t, data) : null;
+    if (!act && hasModel) { const rg = modelPickRange(legId, data, params); for (const t of ALL_TEAMS) if (rg[t]) Object.assign(rows[t], { pLo: rg[t].lo, pHi: rg[t].hi, evLo: rg[t].evLo, evHi: rg[t].evHi }); }
     return { rows, ev };
   }
 
@@ -1057,7 +1097,7 @@ export default function CircaSurvivorPlanner() {
     <>
       {top ? <th className="L entry">Entry</th> : <>
         <th className={"L wp" + (sort.key === "wp" ? " sorted" : "")} onClick={() => clickSort("wp")} title={`True Win % — median of each book's no-vig moneyline probability · ${stamp}`}>W%</th>
-        <th className={"L pp" + (sort.key === "pp" ? " sorted" : "")} onClick={() => clickSort("pp")} title="Circa pick popularity (actual once posted, field model before)">P%</th>
+        <th className={"L pp" + (sort.key === "pp" ? " sorted" : "")} onClick={() => clickSort("pp")} title="Circa pick popularity: actual once posted; before that the field model, shown as the band it is likely to land in at Saturday's lock, given line movement and how far the model has missed so far">P%</th>
         <th className={"L fv" + (sort.key === "fv" ? " sorted" : "")} onClick={() => clickSort("fv")} title="Future value: about how many strong-favorite weeks the team has left after this one">Future</th>
         <th className={"L ev" + (sort.key === "ev" ? " sorted" : "") + (evNote ? " partial" : "")} onClick={() => clickSort("ev")} title={(evNote || `EV for ${legLabel(cur)}`) + (prevAt ? ` · small numbers = change since the previous refresh (${fmtTime(prevAt)})` : "")}>EV{evNote ? "*" : ""}</th>
         <th className={"L dili" + (sort.key === "dili" ? " sorted" : "")} onClick={() => clickSort("dili")} title={`DILI — "do I love it?": this week's EV net of what the team is worth to the rest of this entry's season${prevAt ? ` · small numbers = change since ${fmtTime(prevAt)}` : ""}`}>DILI</th>
@@ -1171,14 +1211,16 @@ export default function CircaSurvivorPlanner() {
               const usedLeg = usedBy[team];
               const st = stats[team];
               const inLeg = !!OPP[legId][team];
+              const band = inLeg && !st.act && st.pLo != null && st.pHi - st.pLo >= 0.02;
+              const pr = (v) => Math.round(100 * v);
               return (
                 <tr key={team} className={usedLeg && usedLeg !== legId ? "gone" : ""}>
                   <td className={"L wp num" + (st.win == null ? " blank" : st.winTop ? " hi" : "") + (st.status === "single" || st.status === "degraded" ? " weak" : "")} title={inLeg ? (st.win == null ? "No two-sided moneyline posted yet for this game" : `${pct(st.win)} — ${STATUS_TEXT[st.status]}${st.status !== "closing" ? ` (${st.n})` : ""} · e.g. ${st.refBook} ${fmtSp(st.ml)} / ${fmtSp(st.oppMl)}${st.dWin != null ? dTip("was", pct(st.win - st.dWin)) : ""}`) : ""}><Num d={st.dWin} kind="pct">{inLeg ? pct(st.win) : ""}</Num></td>
-                  <td className={"L pp num" + (st.pick == null ? " blank" : st.pick > 0.099 ? " warn" : "")} title={inLeg ? (st.act ? "Circa actual" : `field model ${pct(st.pm)}${st.dPick != null ? dTip("was", pct(st.pick - st.dPick)) : ""}`) : ""}><Num d={st.dPick} kind="pct">{inLeg ? (st.pick == null ? "–" : st.pick < 0.005 ? "<1%" : Math.round(st.pick * 100) + "%") : ""}</Num></td>
+                  <td className={"L pp num" + (st.pick == null ? " blank" : st.pick > 0.099 ? " warn" : "")} title={inLeg ? (st.act ? "Circa actual" : `field model ${pct(st.pm)}${st.pLo != null ? ` · likely ${pr(st.pLo)}–${pr(st.pHi)} at lock, given line movement and how far the model has missed so far` : ""}${st.dPick != null ? dTip("was", pct(st.pick - st.dPick)) : ""}`) : ""}>{band ? <span className="v"><span className="n rng">{pr(st.pLo)}–{pr(st.pHi)}%</span></span> : <Num d={st.dPick} kind="pct">{inLeg ? (st.pick == null ? "–" : st.pick < 0.005 ? "<1%" : Math.round(st.pick * 100) + "%") : ""}</Num>}</td>
                   <td className={"L fv num" + (st.fv == null ? " blank" : Math.round(st.fv * 10) / 10 <= 2 ? " hi" : "")} title={st.fv == null ? "No power ratings yet" : `About ${st.fv.toFixed(1)} strong-favorite weeks left after this one (a 75% spot counts ~1, 65% counts ½, 55% a little)`}>
                     <span className="v"><span className="n">{st.fv == null ? "–" : st.fv.toFixed(1)}</span></span>
                   </td>
-                  <td className={"L ev num" + (st.ev == null ? " blank" : st.evTop ? " hi" : "")} title={st.dEv != null ? `EV ${st.ev.toFixed(2)}${dTip("was", (st.ev - st.dEv).toFixed(2))}` : ""}><Num d={st.dEv} kind="ev">{st.ev == null ? (inLeg ? "–" : "") : st.ev.toFixed(2)}</Num></td>
+                  <td className={"L ev num" + (st.ev == null ? " blank" : st.evTop ? " hi" : "")} title={st.ev != null ? `EV ${st.ev.toFixed(2)}${st.evLo != null ? ` · likely ${st.evLo.toFixed(2)}–${st.evHi.toFixed(2)} at lock, given line movement and the model's past misses` : ""}${st.dEv != null ? dTip("was", (st.ev - st.dEv).toFixed(2)) : ""}` : ""}><Num d={st.dEv} kind="ev">{st.ev == null ? (inLeg ? "–" : "") : st.ev.toFixed(2)}</Num></td>
                   <td className={"L dili num" + (st.dili == null ? " blank" : st.diliTop ? " hi" : "")} title={st.dili == null ? (inLeg ? (usedLeg ? "Already used" : "Needs an EV") : "") : diliTip(st)}>
                     <Num d={st.dDili} kind="ev">{st.dili == null ? (inLeg ? "–" : "") : st.dili.toFixed(2)}</Num>
                   </td>

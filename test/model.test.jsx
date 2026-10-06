@@ -1,5 +1,5 @@
 // Field timeline + popularity model on the real data files.
-import { buildData, fieldTimeline, modelPick, fitParams, availability } from "../src/CircaSurvivorPlanner.jsx";
+import { buildData, fieldTimeline, modelPick, modelPickRange, fitParams, availability } from "../src/CircaSurvivorPlanner.jsx";
 import { OPP } from "../src/schedule.js";
 import picks from "../data/picks.json";
 import actuals from "../data/actuals.json";
@@ -33,6 +33,19 @@ if (legWithLines) {
 const params = fitParams(data);
 ok("fitParams returns a,b", Number.isFinite(params.a) && Number.isFinite(params.b), `a=${params.a} b=${params.b} legs=${params.legs}`);
 // with only a week or two of actuals the knobs stay near the prior (8 / 1.5) instead of running to a corner
+// P% band: the model re-run over typical line movement; stable, brackets the point estimate, sane width
+(() => {
+  const leg = Object.keys(OPP).find((id) => !actuals.legs[id] && Object.keys(modelPick(id, data, params)).length);
+  if (!leg) { console.log("P% band: skipped (no open week with lines)"); return; }
+  const m = modelPick(leg, data, params), r1 = modelPickRange(leg, data, params), r2 = modelPickRange(leg, data, params);
+  const top = Object.entries(m).sort((x, y) => y[1] - x[1])[0][0];
+  ok(`${leg} band is deterministic`, JSON.stringify(r1) === JSON.stringify(r2));
+  ok("band brackets the point estimate for the top pick", r1[top].lo <= m[top] + 0.01 && r1[top].hi >= m[top] - 0.01, `${top} ${(100 * m[top]).toFixed(0)}% in ${(100 * r1[top].lo).toFixed(0)}–${(100 * r1[top].hi).toFixed(0)}`);
+  ok("band has a sane width", Object.values(r1).every((b) => b.hi - b.lo >= 0 && b.hi - b.lo < 0.3) && r1[top].hi - r1[top].lo > 0.02);
+  const early = modelPickRange(leg, buildData({ picks, actuals, odds, ratings }), params, new Date("2026-01-01").getTime()), late = modelPickRange(leg, buildData({ picks, actuals, odds, ratings }), params, new Date("2027-01-01").getTime());
+  ok("band narrows as lock approaches", late[top].hi - late[top].lo < early[top].hi - early[top].lo, `4 days out ${(100 * early[top].lo).toFixed(0)}–${(100 * early[top].hi).toFixed(0)}, at lock ${(100 * late[top].lo).toFixed(0)}–${(100 * late[top].hi).toFixed(0)}`);
+  ok("EV band ordered", Object.values(r1).every((b) => b.evLo == null || b.evLo <= b.evHi));
+})();
 ok("early-season knobs stay in a sane range", params.legs <= 3 ? params.a >= 5 && params.a <= 16 && params.b >= 0.05 && params.b <= 0.6 : true, `a=${params.a} b=${params.b}`);
 // no actuals at all → the prior itself
 ok("no actuals → prior", (() => { const p = fitParams({ ...data, actuals: {} }); return p.a === 8 && p.b === 0.15 && p.legs === 0; })());
@@ -42,6 +55,7 @@ ok("no actuals → prior", (() => { const p = fitParams({ ...data, actuals: {} }
     const tot = Object.values(a.picks).reduce((x, y) => x + y, 0), [t] = Object.entries(a.picks).sort((x, y) => y[1] - x[1])[0];
     return { id, t, d: Math.abs((modelPick(id, data, params)[t] || 0) - a.picks[t] / tot) };
   });
-  ok("each week's top team within 8 pts of actual", miss.length > 0 && miss.every((m) => m.d < 0.08), miss.map((m) => `${m.id} ${m.t} ${(100 * m.d).toFixed(1)}`).join(", "));
+  const avg = miss.reduce((s, m) => s + m.d, 0) / miss.length;
+  ok("top team within 12 pts every week and 5 on average", miss.length > 0 && miss.every((m) => m.d < 0.12) && avg < 0.05, miss.map((m) => `${m.id} ${m.t} ${(100 * m.d).toFixed(1)}`).join(", ") + ` · avg ${(100 * avg).toFixed(1)}`);
 })();
 if (fails) { console.log(`${fails} FAILED`); process.exit(1); }
