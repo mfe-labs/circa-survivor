@@ -197,7 +197,7 @@
    "source": "https://www.circasports.com/wp-content/uploads/2026/09/Circa-Survivor-2026-Week-3-Selections.pdf"
   },
   "W4": {
-   "asOf": "Oct 4 (2 pending)",
+   "asOf": "Oct 5 (final)",
    "picks": {
     "PIT": 6,
     "MIN": 2733,
@@ -237,6 +237,7 @@
     "LAR",
     "DAL",
     "SF",
+    "ATL",
     "JAX",
     "CAR",
     "NYG"
@@ -247,15 +248,13 @@
     "DET",
     "ARI",
     "HOU",
+    "NO",
     "LAC",
     "CIN",
     "WAS",
     "NOPICK"
    ],
-   "pending": [
-    "NO",
-    "ATL"
-   ],
+   "pending": [],
    "source": "https://www.circasports.com/wp-content/uploads/2026/10/Circa-Survivor-2026-Week-4-Selections.pdf"
   }
  }
