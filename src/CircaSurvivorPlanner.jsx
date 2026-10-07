@@ -387,6 +387,25 @@ const withBurned = (bi, team) => { const b = bi.slice(); b[ALL_TEAMS.indexOf(tea
 // strength half weighs STRENGTH_W with STRENGTH_SPAN or more weeks still to plan and fades to zero by the end,
 // when the map is the plan. Unverifiable for now; the frozen future values will let it be sized by ~Week 9.
 const STRENGTH_W = 0.5, STRENGTH_SPAN = 15;
+// The Future column, per entry. The raw count (fvAt) is how many strong weeks the team has anywhere later; the
+// entry-aware count credits a strong week only as far as the team would be one of this entry's top options that
+// week given the teams it still holds (full credit as first or second, two thirds as third, a third as fourth,
+// nothing below). The column shows a blend of the two with the same weight as DILI's strength half: half and
+// half with fifteen or more weeks to plan, pure entry-aware by the last week, when the map is the plan.
+const RANK_CREDIT = [1, 1, 0.67, 0.33];
+function futureFor(legId, team, data, burned) {
+  const raw = fvAt(legId, team, data);
+  const idx = LEGS.findIndex((l) => l.id === legId);
+  let entry = 0;
+  for (const l of LEGS.slice(idx + 1)) {
+    const mine = lineFor(l.id, team, data)?.win; if (mine == null) continue;
+    let rank = 0;
+    for (const t of Object.keys(OPP[l.id])) { if (t === team || burned.has(t)) continue; const w = lineFor(l.id, t, data)?.win; if (w != null && w > mine) rank++; }
+    entry += spotWeight(mine) * (RANK_CREDIT[rank] ?? 0);
+  }
+  const w = strengthWeight(legId);
+  return { raw, entry, blend: w * raw + (1 - w) * entry, w };
+}
 function strengthWeight(legId) { const left = LEGS.length - 1 - LEGS.findIndex((l) => l.id === legId); return STRENGTH_W * Math.min(1, left / STRENGTH_SPAN); }
 // DILI = EV ÷ forfeit, where forfeit = (map value with the team kept) ÷ (map value with it burned), averaged over
 // the noisy seasons. Fills r.forfeit, r.swaps (what the projected map changes if the team is burned) and r.dili.
@@ -599,7 +618,7 @@ export function entryStatus(entry, actualLegs) {
   return { alive: true, leg: null };
 }
 
-export { modelPickRange, fvAt, bandError, strengthWeight, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
+export { modelPickRange, fvAt, bandError, strengthWeight, futureFor, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
 
 const CSS = `
 /* ---- tokens: paper, ink, one green ---- */
@@ -1055,6 +1074,7 @@ export default function CircaSurvivorPlanner() {
     const cur = computeStats(legId, data, params);
     const map = computeDili(legId, cur.rows, data, burned, params);
     for (const t of ALL_TEAMS) { const r = cur.rows[t]; if (r.dili != null && r.evLo != null && Number.isFinite(r.forfeit)) { r.diliLo = r.evLo / r.forfeit; r.diliHi = r.evHi / r.forfeit; } }
+    for (const t of ALL_TEAMS) { const r = cur.rows[t]; if (r.fv == null || burned.has(t)) continue; const f = futureFor(legId, t, data, burned); r.fvRaw = f.raw; r.fvEntry = f.entry; r.fvW = f.w; r.fv = f.blend; }
     const prev = data.prev ? computeStats(legId, data.prev, params) : null;
     if (prev) {
       computeDili(legId, prev.rows, data.prev, burned, params);
@@ -1157,7 +1177,7 @@ export default function CircaSurvivorPlanner() {
       {top ? <th className="L entry">Entry</th> : <>
         <th className={"L wp" + (sort.key === "wp" ? " sorted" : "")} onClick={() => clickSort("wp")} title={`True Win % — median of each book's no-vig moneyline probability · ${stamp}`}>W%</th>
         <th className={"L pp" + (sort.key === "pp" ? " sorted" : "")} onClick={() => clickSort("pp")} title="Circa pick popularity: actual once posted; before that the field model, the tooltip shows the middle half of where it could land at Saturday's lock, given line movement and how far the model has missed so far">P%</th>
-        <th className={"L fv" + (sort.key === "fv" ? " sorted" : "")} onClick={() => clickSort("fv")} title="Future value: about how many strong-favorite weeks the team has left after this one">Future</th>
+        <th className={"L fv" + (sort.key === "fv" ? " sorted" : "")} onClick={() => clickSort("fv")} title="Future: about how many strong-favorite weeks this team has left that this entry would use. Half the team's own count and half the count against the teams you still hold, the same split as DILI's forfeit, leaning toward your own cover as the season shortens">Future</th>
         <th className={"L ev" + (sort.key === "ev" ? " sorted" : "") + (evNote ? " partial" : "")} onClick={() => clickSort("ev")} title={(evNote || `EV for ${legLabel(cur)}`) + (prevAt ? ` · small numbers = change since the previous refresh (${fmtTime(prevAt)})` : "")}>EV{evNote ? "*" : ""}</th>
         <th className={"L dili" + (sort.key === "dili" ? " sorted" : "")} onClick={() => clickSort("dili")} title={`DILI — "do I love it?": this week's EV net of what the team is worth to the rest of this entry's season${prevAt ? ` · small numbers = change since ${fmtTime(prevAt)}` : ""}`}>DILI</th>
         <th className={"L team" + (sort.key === "team" ? " sorted" : "")} onClick={() => clickSort("team")}>Team</th>
@@ -1276,7 +1296,7 @@ export default function CircaSurvivorPlanner() {
                 <tr key={team} className={usedLeg && usedLeg !== legId ? "gone" : ""}>
                   <td className={"L wp num" + (st.win == null ? " blank" : st.winTop ? " hi" : "") + (st.status === "single" || st.status === "degraded" ? " weak" : "")} title={inLeg ? (st.win == null ? "No two-sided moneyline posted yet for this game" : `${pct(st.win)} — ${STATUS_TEXT[st.status]}${st.status !== "closing" ? ` (${st.n})` : ""} · e.g. ${st.refBook} ${fmtSp(st.ml)} / ${fmtSp(st.oppMl)}${st.dWin != null ? dTip("was", pct(st.win - st.dWin)) : ""}`) : ""}><Num d={st.dWin} kind="pct">{inLeg ? pct(st.win) : ""}</Num></td>
                   <td className={"L pp num" + (st.pick == null ? " blank" : st.pick > 0.099 ? " warn" : "")} title={inLeg ? (st.act ? "Circa actual" : `field model ${pct(st.pm)}${st.pLo != null ? ` · likely ${pr(st.pLo)}–${pr(st.pHi)} at lock (middle half of outcomes, given line movement and how far the model has missed so far)` : ""}${st.dPick != null ? dTip("was", pct(st.pick - st.dPick)) : ""}`) : ""}><Num d={st.dPick} kind="pct">{inLeg ? (st.pick == null ? "–" : st.pick < 0.005 ? "<1%" : Math.round(st.pick * 100) + "%") : ""}</Num></td>
-                  <td className={"L fv num" + (st.fv == null ? " blank" : Math.round(st.fv * 10) / 10 <= 2 ? " hi" : "")} title={st.fv == null ? "No power ratings yet" : `About ${st.fv.toFixed(1)} strong-favorite weeks left after this one (a 75% spot counts ~1, 65% counts ½, 55% a little)`}>
+                  <td className={"L fv num" + (st.fv == null ? " blank" : Math.round(st.fv * 10) / 10 <= 2 ? " hi" : "")} title={st.fv == null ? "No power ratings yet" : st.fvRaw != null ? `About ${st.fv.toFixed(1)} strong-favorite weeks left that this entry would use: ${st.fvRaw.toFixed(1)} for the team on its own, ${st.fvEntry.toFixed(1)} counted against the teams you still hold, blended ${Math.round(100 * st.fvW)}/${Math.round(100 * (1 - st.fvW))}${st.forfeit != null && Number.isFinite(st.forfeit) ? ` · costs this entry ${Math.round(100 * (st.forfeit - 1))}% to spend` : ""}` : `About ${st.fv.toFixed(1)} strong-favorite weeks left after this one (a 75% spot counts ~1, 65% counts ½, 55% a little)`}>
                     <span className="v"><span className="n">{st.fv == null ? "–" : st.fv.toFixed(1)}</span></span>
                   </td>
                   <td className={"L ev num" + (st.ev == null ? " blank" : st.evTop ? " hi" : "")} title={st.ev != null ? `EV ${st.ev.toFixed(2)}${st.evLo != null ? ` · likely ${st.evLo.toFixed(2)}–${st.evHi.toFixed(2)} at lock (middle half of outcomes)` : ""}${st.dEv != null ? dTip("was", (st.ev - st.dEv).toFixed(2)) : ""}` : ""}><Num d={st.dEv} kind="ev">{st.ev == null ? (inLeg ? "–" : "") : st.ev.toFixed(2)}</Num></td>

@@ -1,5 +1,5 @@
 // DILI: EV net of what the team is worth to the rest of the entry's season (the map); and the futures-market prior.
-import { buildData, computeEV, computeDili, planMap, spentTeams, customSummary, fitParams, fvFor, strengthWeight } from "../src/CircaSurvivorPlanner.jsx";
+import { buildData, computeEV, computeDili, planMap, spentTeams, customSummary, fitParams, fvFor, strengthWeight, futureFor } from "../src/CircaSurvivorPlanner.jsx";
 import { priorFromFutures } from "../src/ratings.js";
 import { OPP, ALL_TEAMS, LEGS, TG_TEAMS, XM_TEAMS } from "../src/schedule.js";
 import picks from "../data/picks.json"; import actuals from "../data/actuals.json"; import odds from "../data/odds.json"; import ratings from "../data/ratings.json";
@@ -32,6 +32,16 @@ ok("forfeit records both parts and lies between them", homes.every((t) => { cons
 ok("strength part is calibrated to the map part's average", (() => { const sc = Object.keys(OPP.W2).filter((t) => rows[t].forfeitMap != null); const a = sc.reduce((x, t) => x + Math.log(rows[t].forfeitMap), 0), b = sc.reduce((x, t) => x + Math.log(rows[t].forfeitStr), 0); return Math.abs(a - b) < 1e-6; })());
 ok("more future value, bigger strength forfeit", rows.KC.forfeitStr > rows.BAL.forfeitStr && rows.BAL.forfeitStr > rows.CIN.forfeitStr);
 ok("strength weight is half early and zero at the end", Math.abs(strengthWeight("W2") - 0.5) < 1e-9 && strengthWeight("W18") === 0 && strengthWeight("W16") > 0 && strengthWeight("W16") < 0.5, `W2 ${strengthWeight("W2")} W16 ${strengthWeight("W16").toFixed(2)} W18 ${strengthWeight("W18")}`);
+// the Future column: raw count, entry-aware count, and the blend between them
+(() => {
+  const none = new Set(), f = futureFor("W2", "KC", data, none), c = futureFor("W2", "CIN", data, none);
+  ok("entry-aware count never exceeds the raw count", f.entry <= f.raw + 1e-9 && c.entry <= c.raw + 1e-9, `KC ${f.raw.toFixed(1)}/${f.entry.toFixed(1)} CIN ${c.raw.toFixed(1)}/${c.entry.toFixed(1)}`);
+  ok("blend sits between the two at DILI's weight", Math.abs(f.blend - (f.w * f.raw + (1 - f.w) * f.entry)) < 1e-12 && f.w === strengthWeight("W2"));
+  ok("a stud keeps most of its count, a flat team keeps little", f.entry / f.raw > 0.6 && (c.raw === 0 || c.entry / c.raw < 0.5));
+  const spentStuds = futureFor("W2", "BAL", data, new Set(["KC", "BUF", "SF"]));
+  ok("spending your studs makes the next team's weeks count for more", spentStuds.entry > futureFor("W2", "BAL", data, none).entry);
+  ok("last week is pure entry-aware", (() => { const x = futureFor("W18", "KC", data, none); return x.w === 0 && x.blend === x.entry; })());
+})();
 // the map: one distinct team per remaining leg, each with a game that leg, holidays filled with eligible teams
 const later = LEGS.filter((l) => l.id !== "W2");     // nothing is locked in the synthetic world, so W1 is still open too
 ok("map covers every open leg but the one being scored", map.length === later.length && map.every((p, i) => p.leg.id === later[i].id));

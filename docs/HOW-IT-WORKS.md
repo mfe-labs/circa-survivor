@@ -63,7 +63,11 @@ each with its own pick. Each team once per entry. Tie = loss. Schedule is hard-c
 Expected number of strong-favorite weeks left after the selected one. Each later week counts by how much it looks
 like a strong spot, a logistic curve centred at 65% with a 5-point width: about 1 at 75%, ½ at 65%, a little at
 55%, nothing at 45%. Reads as "about N good weeks left" and separates a team with two usable weeks from one with
-none.
+none. That raw count (`fvFor`, frozen per locked week as `fvAt`) feeds the popularity model. The Future column shows
+`futureFor(leg, team, data, burned).blend`: w × raw + (1 − w) × entry-aware, where entry-aware multiplies each
+week's weight by `RANK_CREDIT[rank]` (1, 1, 0.67, 0.33, then 0) for the team's rank among the entry's unspent teams
+that week, and w = `strengthWeight(leg)` (0.5 × min(1, legs left ÷ 15)), the same weight as DILI's strength half.
+Rows carry `fvRaw`, `fvEntry`, `fvW`.
 
 ## Power ratings prior
 The ridge fit is anchored to the Super Bowl futures market (implied title probabilities, averaged across books,
