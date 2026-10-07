@@ -480,7 +480,9 @@ export function diliPlan(data, picks, params = PRIOR) {
   let cheap = [];
   for (let k = tab.nowIdx; k < LEGS.length; k++) {
     const l = LEGS[k], near = tab.near[l.id], now = k === tab.nowIdx, rows = {};
-    for (const t of ALL_TEAMS) { const ln = OPP[l.id][t] ? (now ? marketLine(l.id, t, data) : lineFor(l.id, t, data)) : null; rows[t] = { win: ln?.win ?? null, pick: 0 }; }
+    // the current week scores on True Win % like the Planner; if the books have posted nothing yet, fall back to projections
+    const strict = now && Object.keys(OPP[l.id]).some((t) => marketLine(l.id, t, data));
+    for (const t of ALL_TEAMS) { const ln = OPP[l.id][t] ? (strict ? marketLine(l.id, t, data) : lineFor(l.id, t, data)) : null; rows[t] = { win: ln?.win ?? null, pick: 0 }; }
     let ev = false;
     if (now) { const mp = modelPick(l.id, data, params); if (Object.keys(mp).length) { for (const t in rows) rows[t].pick = mp[t] ?? 0; ev = true; } }
     else if (near) { for (const t in rows) rows[t].pick = near.p[t] || 0; ev = true; }
