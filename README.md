@@ -46,7 +46,7 @@ GitHub Actions keep the lines, ratings and Circa results fresh. There is no serv
 | P% | Share of the field on that team: Circa's real number once posted, a fitted model before. |
 | Future | About how many strong-favorite weeks the team has left. |
 | EV | This week's value against the field, scaled so an average pick is 1.00. |
-| Map tab | Claude's Map plus your own saved maps (data/maps.json), with conflicts flagged. Claude's Map is the entry's whole season from the same map: each week's pick, win chance, how often it held up across 96 noisy seasons, the backup, and a one-line reason. |
+| Map tab | Claude's DILI Map (the Planner's rule applied week by week), Claude's 96 Map (the plan the jiggled seasons agree on, with counts), plus your own saved maps (data/maps.json) with conflicts flagged. The underlying map is the entry's whole season from one solve: each week's pick, win chance, how often it held up across 96 noisy seasons, the backup, and a one-line reason. |
 | DILI | EV ÷ forfeit, where the forfeit is what burning the team costs the entry's map of the rest of the season (holidays included), averaged over 96 noisy seasons. Per entry. |
 
 ## Editing (owner)

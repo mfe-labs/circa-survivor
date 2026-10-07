@@ -1,5 +1,5 @@
 // DILI: EV net of what the team is worth to the rest of the entry's season (the map); and the futures-market prior.
-import { buildData, computeEV, computeDili, planMap, spentTeams, customSummary, fitParams, fvFor, strengthWeight, futureFor } from "../src/CircaSurvivorPlanner.jsx";
+import { buildData, computeEV, computeDili, planMap, spentTeams, customSummary, fitParams, fvFor, strengthWeight, futureFor, diliPlan, consensusPlan, modelPick, marketLine } from "../src/CircaSurvivorPlanner.jsx";
 import { priorFromFutures } from "../src/ratings.js";
 import { OPP, ALL_TEAMS, LEGS, TG_TEAMS, XM_TEAMS } from "../src/schedule.js";
 import picks from "../data/picks.json"; import actuals from "../data/actuals.json"; import odds from "../data/odds.json"; import ratings from "../data/ratings.json";
@@ -112,6 +112,27 @@ ok("future value on a readable scale", fvFor("W2", "KC", data) < 18 && fvFor("W2
   ok("a team spent in a finished week is a conflict", sp.rows.find((r) => r.leg.id === "W6").spent?.id === "W1" && sp.usedAt("KC", "W7") === "used W1");
   const gap = customSummary(d, { picks: entryP }, { picks: { W3: picks.W3 } }, pl);
   ok("empty weeks make the map incomplete, not wrong", gap.conflicts === 0 && gap.winOut === null && /no pick/.test(gap.winNote));
+})();
+
+// the two Claude maps
+(() => {
+  const real = buildData({ picks, actuals, odds, ratings }), params = fitParams(real), e = picks.entries[0];
+  const t0 = Date.now(); const dp = diliPlan(real, e.picks, params); const ms = Date.now() - t0;
+  const cp = consensusPlan(real, e.picks, params);
+  const open = LEGS.filter((l) => !real.actuals[l.id] || real.actuals[l.id].pending?.length);
+  ok("DILI map fills every open week with distinct teams", dp.plan.length >= open.length && dp.plan.every((p) => p.team) && new Set(dp.plan.map((p) => p.team)).size === dp.plan.length, `${dp.plan.length} weeks, ${ms} ms`);
+  ok("DILI map is quick enough", ms < 3000, `${ms} ms`);
+  // its current week equals the Planner's top DILI
+  const leg = dp.plan[0].leg.id, mp = modelPick(leg, real, params), rows = {};
+  for (const tm of ALL_TEAMS) { const m = marketLine(leg, tm, real); rows[tm] = { win: m ? m.win : null, pick: mp[tm] ?? 0 }; }
+  computeEV(leg, rows); computeDili(leg, rows, real, spentTeams(real, e.picks), params);
+  const top = Object.keys(OPP[leg]).filter((tm) => rows[tm].dili != null).sort((x, y) => rows[y].dili - rows[x].dili)[0];
+  ok("DILI map's current week is the Planner's pick", dp.plan[0].team === top && Math.abs(dp.plan[0].dili - rows[top].dili) < 1e-9, `${leg}: ${dp.plan[0].team} vs ${top}`);
+  ok("DILI map never reuses a spent team", dp.plan.every((p) => !spentTeams(real, e.picks).has(p.team)));
+  ok("96 map fills every open week with distinct teams and counts out of 96", cp.plan.length === dp.plan.length && cp.plan.every((p) => p.team && p.held >= 0 && p.held <= 96) && new Set(cp.plan.map((p) => p.team)).size === cp.plan.length);
+  ok("96 map's backup is never a team it uses elsewhere", cp.plan.every((p) => !p.backup || !cp.plan.some((q) => q.team === p.backup)));
+  ok("both maps put eligible teams on the holidays", [dp, cp].every((m) => m.plan.every((p) => (p.leg.id !== "TG" || TG_TEAMS.has(p.team)) && (p.leg.id !== "XM" || XM_TEAMS.has(p.team)))));
+  ok("both maps report a chance of winning out", dp.winOut > 0 && dp.winOut < 0.2 && cp.winOut > 0 && cp.winOut < 0.2, `DILI ${(100 * dp.winOut).toFixed(2)}% · 96 ${(100 * cp.winOut).toFixed(2)}%`);
 })();
 
 // futures prior: monotone in title odds, centered, on a points scale

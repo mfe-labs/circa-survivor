@@ -97,7 +97,13 @@ fetch fails, last season's market ratings regressed 40% toward average are the f
   stop holding what they picked). Further out the field model drifts, so plain win chance is used.
 - The map fills every leg from openLeg() on (the first week not completely over), except the leg being scored.
   Picks in those weeks are soft: they neither spend a team nor fix a week (spentTeams = picks in finished weeks).
-- `planMap(data, picks, params)` feeds the Map tab: the projected map, per-leg first-choice counts across the 96
+- `diliPlan(data, picks, params)` is Claude's DILI Map: from the first open leg, build rows as the Planner does
+  (market win + model shares for the current leg, forward-field shares for near legs, win chance alone beyond),
+  `computeDili` with the already-planned legs skipped from the forfeit map, take the top, spend it, repeat. Also
+  returns winOut, weakest, and `cheap` (lowest forfeit among this week's favorites).
+- `consensusPlan(data, picks, params)` is Claude's 96 Map: greedy assignment over `planMap().byLeg` counts in order
+  of agreement, one week per team, fallback to best available win; backup = runner-up count not used elsewhere.
+- `planMap(data, picks, params)` is the single-solve map underneath (also used by DILI's tooltips): the projected map, per-leg first-choice counts across the 96
   draws, the backup (what fills the leg after burning the pick) and cost, field ownership for near legs, the
   chance of winning out, the three weakest legs, and the three favorites (55%+) in the current leg used least often in
   later legs across the draws (cheapest to burn).
