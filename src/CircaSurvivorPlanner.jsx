@@ -1100,8 +1100,8 @@ export default function CircaSurvivorPlanner() {
   const Delta = ({ v, kind }) => {
     if (v == null) return null;
     const pts = kind === "ev" ? v : v * 100;
-    if (Math.abs(pts) < (kind === "ev" ? 0.005 : 0.5)) return null;
-    const txt = kind === "ev" ? (pts > 0 ? "+" : "−") + Math.abs(pts).toFixed(2).replace(/^0/, "") : (pts > 0 ? "+" : "−") + Math.abs(Math.round(pts));
+    if (Math.abs(pts) < (kind === "ev" ? 0.005 : kind === "pct1" ? 0.05 : 0.5)) return null;
+    const txt = kind === "ev" ? (pts > 0 ? "+" : "−") + Math.abs(pts).toFixed(2).replace(/^0/, "") : kind === "pct1" ? (pts > 0 ? "+" : "−") + Math.abs(pts).toFixed(1) : (pts > 0 ? "+" : "−") + Math.abs(Math.round(pts));
     return <span className={"d " + (pts > 0 ? "up" : "down")}>{txt}</span>;
   };
   // number stays centered in the column; the delta sits in the space to its right
@@ -1167,6 +1167,8 @@ export default function CircaSurvivorPlanner() {
   const clickSort = (key) => setSort((s) => (s.key === key ? { key, dir: -s.dir } : { key, dir: key === "team" ? -1 : 1 }));
   const fmtSp = (v) => (v == null ? "" : v > 0 ? "+" + v : v === 0 ? "PK" : String(v));
   const pct = (v) => (v == null ? "–" : Math.round(v * 100) + "%");
+  // pick share: one decimal below 10% (posted counts are exact there; model values are rough but read consistently), whole numbers above
+  const pctP = (v) => (v == null ? "–" : v < 0.0005 ? "<0.1%" : v < 0.0995 ? (v * 100).toFixed(1) + "%" : Math.round(v * 100) + "%");
   const cur = LEGS.find((l) => l.id === legId);
   const legInfo = data.legs[legId];
   const flags = legInfo ? [legInfo.counts.degraded && `${legInfo.counts.degraded} at 2 books`, legInfo.counts.single && `${legInfo.counts.single} single-book`].filter(Boolean).join(", ") : "";
@@ -1295,7 +1297,7 @@ export default function CircaSurvivorPlanner() {
               return (
                 <tr key={team} className={usedLeg && usedLeg !== legId ? "gone" : ""}>
                   <td className={"L wp num" + (st.win == null ? " blank" : st.winTop ? " hi" : "") + (st.status === "single" || st.status === "degraded" ? " weak" : "")} title={inLeg ? (st.win == null ? "No two-sided moneyline posted yet for this game" : `${pct(st.win)} — ${STATUS_TEXT[st.status]}${st.status !== "closing" ? ` (${st.n})` : ""} · e.g. ${st.refBook} ${fmtSp(st.ml)} / ${fmtSp(st.oppMl)}${st.dWin != null ? dTip("was", pct(st.win - st.dWin)) : ""}`) : ""}><Num d={st.dWin} kind="pct">{inLeg ? pct(st.win) : ""}</Num></td>
-                  <td className={"L pp num" + (st.pick == null ? " blank" : st.pick > 0.099 ? " warn" : "")} title={inLeg ? (st.act ? "Circa actual" : `field model ${pct(st.pm)}${st.pLo != null ? ` · likely ${pr(st.pLo)}–${pr(st.pHi)} at lock (middle half of outcomes, given line movement and how far the model has missed so far)` : ""}${st.dPick != null ? dTip("was", pct(st.pick - st.dPick)) : ""}`) : ""}><Num d={st.dPick} kind="pct">{inLeg ? (st.pick == null ? "–" : st.pick < 0.005 ? "<1%" : Math.round(st.pick * 100) + "%") : ""}</Num></td>
+                  <td className={"L pp num" + (st.pick == null ? " blank" : st.pick > 0.099 ? " warn" : "")} title={inLeg ? (st.act ? "Circa actual" : `field model ${pctP(st.pm)}${st.pLo != null ? ` · likely ${pr(st.pLo)}–${pr(st.pHi)} at lock (middle half of outcomes, given line movement and how far the model has missed so far)` : ""}${st.dPick != null ? dTip("was", pct(st.pick - st.dPick)) : ""}`) : ""}><Num d={st.dPick} kind={st.pick != null && st.pick < 0.0995 ? "pct1" : "pct"}>{inLeg ? pctP(st.pick) : ""}</Num></td>
                   <td className={"L fv num" + (st.fv == null ? " blank" : Math.round(st.fv * 10) / 10 <= 2 ? " hi" : "")} title={st.fv == null ? "No power ratings yet" : st.fvRaw != null ? `About ${st.fv.toFixed(1)} strong-favorite weeks left that this entry would use: ${st.fvRaw.toFixed(1)} for the team on its own, ${st.fvEntry.toFixed(1)} counted against the teams you still hold, blended ${Math.round(100 * st.fvW)}/${Math.round(100 * (1 - st.fvW))}${st.forfeit != null && Number.isFinite(st.forfeit) ? ` · costs this entry ${Math.round(100 * (st.forfeit - 1))}% to spend` : ""}` : `About ${st.fv.toFixed(1)} strong-favorite weeks left after this one (a 75% spot counts ~1, 65% counts ½, 55% a little)`}>
                     <span className="v"><span className="n">{st.fv == null ? "–" : st.fv.toFixed(1)}</span></span>
                   </td>
