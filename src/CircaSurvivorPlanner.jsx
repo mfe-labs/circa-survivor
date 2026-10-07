@@ -377,6 +377,17 @@ function bestMap(tab, legIdx, burnedIdx, sample) {
 }
 const deadLeg = (tab, legIdx, bidx) => { const k = legIdx.find((k) => !ALL_TEAMS.some((t, i) => !bidx[i] && !Number.isNaN(tab.z[k][i]))); return k == null ? null : LEGS[k]; };
 const withBurned = (bi, team) => { const b = bi.slice(); b[ALL_TEAMS.indexOf(team)] = true; return b; };
+// Strength forfeit. The map forfeit assumes the plan survives: inside every noisy season the solver re-plans all
+// remaining weeks at once knowing that season's lines, so it always finds the backup. Real picks are made one
+// week at a time, injuries and form swings are bigger than the line noise, and the plan will not be followed
+// exactly. Broad strength (future value, the count of strong spots anywhere later) is the hedge against that:
+// strong spots are what you reach for when the plan breaks. So the forfeit is a blend, in log terms, of the map
+// forfeit and exp(β × future value). β is set each refresh so the two forfeits have the same average size over
+// this week's scored teams: the blend reshuffles cost toward broadly strong teams, it does not inflate it. The
+// strength half weighs STRENGTH_W with STRENGTH_SPAN or more weeks still to plan and fades to zero by the end,
+// when the map is the plan. Unverifiable for now; the frozen future values will let it be sized by ~Week 9.
+const STRENGTH_W = 0.5, STRENGTH_SPAN = 15;
+function strengthWeight(legId) { const left = LEGS.length - 1 - LEGS.findIndex((l) => l.id === legId); return STRENGTH_W * Math.min(1, left / STRENGTH_SPAN); }
 // DILI = EV ÷ forfeit, where forfeit = (map value with the team kept) ÷ (map value with it burned), averaged over
 // the noisy seasons. Fills r.forfeit, r.swaps (what the projected map changes if the team is burned) and r.dili.
 // Returns the entry's projected map for the other open legs.
@@ -394,10 +405,20 @@ export function computeDili(legId, rows, data, burned, params = PRIOR) {
     const dl = deadLeg(tab, legIdx, bt);
     if (dl && !baseDead) { r.forfeit = Infinity; r.dili = 0; r.deadLeg = dl; r.swaps = []; continue; }
     let V = 0; for (let s = 0; s < MAP_SAMPLES; s++) V += bestMap(tab, legIdx, bt, s).V; V /= MAP_SAMPLES;
-    r.forfeit = 1 / Math.min(1, Math.exp(V - baseV));
-    r.dili = r.ev / r.forfeit;
+    r.forfeitMap = 1 / Math.min(1, Math.exp(V - baseV));
     const alt = bestMap(tab, legIdx, bt, -1);
     r.swaps = base.path.map((p, k) => (p.team !== alt.path[k].team ? { leg: p.leg, from: p.team, fromWin: p.win, to: alt.path[k].team, toWin: alt.path[k].win } : null)).filter(Boolean);
+  }
+  // blend in the strength forfeit, calibrated to the map forfeit's average size this week
+  const w = strengthWeight(legId), scored = Object.keys(OPP[legId]).filter((t) => rows[t].forfeitMap != null);
+  const fv = Object.fromEntries(scored.map((t) => [t, fvAt(legId, t, data)]));
+  const meanLog = scored.reduce((a, t) => a + Math.log(rows[t].forfeitMap), 0) / (scored.length || 1), meanFv = scored.reduce((a, t) => a + fv[t], 0) / (scored.length || 1);
+  const beta = meanFv > 0 ? meanLog / meanFv : 0;
+  for (const t of scored) {
+    const r = rows[t];
+    r.forfeitStr = Math.exp(beta * fv[t]); r.strengthW = w; r.beta = beta;
+    r.forfeit = Math.pow(r.forfeitMap, 1 - w) * Math.pow(r.forfeitStr, w);
+    r.dili = r.ev / r.forfeit;
   }
   return base.path;
 }
@@ -578,7 +599,7 @@ export function entryStatus(entry, actualLegs) {
   return { alive: true, leg: null };
 }
 
-export { modelPickRange, fvAt, bandError, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
+export { modelPickRange, fvAt, bandError, strengthWeight, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
 
 const CSS = `
 /* ---- tokens: paper, ink, one green ---- */
@@ -1068,7 +1089,8 @@ export default function CircaSurvivorPlanner() {
   const diliTip = (st) => {
     if (st.deadLeg) return `Burning this team leaves nothing eligible for ${legLabel(st.deadLeg)}: DILI 0`;
     const swaps = (st.swaps || []).map((p) => `${legLabel(p.leg)} ${p.from} ${pct(p.fromWin)} → ${p.to} ${pct(p.toWin)}`).join(", ");
-    return `EV ${st.ev.toFixed(2)} ÷ forfeit ${st.forfeit.toFixed(2)} = ${st.dili.toFixed(2)}${st.diliLo != null ? ` (likely ${st.diliLo.toFixed(2)}–${st.diliHi.toFixed(2)} at lock (middle half of outcomes))` : ""} · ${swaps ? `burning it changes your map: ${swaps}` : "not on your projected map, so the forfeit is only the chance it turns into a spot later"}${st.dDili != null ? dTip("was", (st.dili - st.dDili).toFixed(2)) : ""}`;
+    const parts = st.forfeitMap != null && st.strengthW > 0 ? ` (map ${st.forfeitMap.toFixed(2)}, strength ${st.forfeitStr.toFixed(2)} at ${Math.round(100 * st.strengthW)}%)` : "";
+    return `EV ${st.ev.toFixed(2)} ÷ forfeit ${st.forfeit.toFixed(2)}${parts} = ${st.dili.toFixed(2)}${st.diliLo != null ? ` (likely ${st.diliLo.toFixed(2)}–${st.diliHi.toFixed(2)} at lock (middle half of outcomes))` : ""} · ${swaps ? `burning it changes your map: ${swaps}` : "not on your projected map, so the forfeit is only the chance it turns into a spot later"}${st.dDili != null ? dTip("was", (st.dili - st.dDili).toFixed(2)) : ""}`;
   };
   const dTip = (label, was) => (prevAt ? ` · ${label} ${was} at the previous refresh (${fmtTime(prevAt)})` : "");
   void 0;
@@ -1326,7 +1348,8 @@ function AuditPanel({ legId, data, params, merr, stats, evNote, map }) {
         </div>
         <div className="sec">
           <h4>DILI — do I love it?</h4>
-          <p>EV divided by the forfeit. The forfeit is what spending the team does to this entry's map: the best way to fill every remaining week, holidays included, with distinct teams it still holds, scored by the chance of winning them all. Burn the team, re-solve, and the drop is the forfeit; the last eligible team for a holiday reads 0. December lines are unknown in September, so the map is solved {MAP_SAMPLES} times over projections jiggled by how wrong they usually are that far out (about 3 points of spread next month, 6 by December) and the forfeit is the average. The next {NEAR_LEGS} weeks use projected EV rather than win chance, from a forward run of the field model. Green marks this entry's best five.</p>
+          <p>EV divided by the forfeit. The forfeit blends two things. The map part is what spending the team does to this entry's map: the best way to fill every remaining week, holidays included, with distinct teams it still holds, scored by the chance of winning them all, re-solved without the team; the last eligible team for a holiday reads 0. It is solved {MAP_SAMPLES} times over projections jiggled by how wrong they usually are that far out, with the next {NEAR_LEGS} weeks scored by projected EV. The strength part grows with future value, because the map assumes the plan holds and strong spots are what you reach for when it does not; it is sized to the map part's average and weighs {Math.round(100 * strengthWeight(legId))}% this week, fading to nothing by the last week. Green marks this entry's best five.</p>
+
           <p><b>This entry's map</b>, from today's projections. Hover a week for the win chance.</p>
           <div className="map">{(map || []).map((p) => <span key={p.leg.id} className={(p.leg.holiday ? "hol" : "") + (p.team ? "" : " dead")} title={`${legLabel(p.leg)}: ${p.team ? `${p.team} ${(100 * p.win).toFixed(0)}%` : "no eligible team left"}`}><i>{p.leg.label}</i>{p.team || "—"}</span>)}</div>
         </div>
@@ -1349,7 +1372,7 @@ function AuditPanel({ legId, data, params, merr, stats, evNote, map }) {
               <td className="mut">{pc(stats[t].pm, 1)}</td>
               <td>{pc(stats[t].pick, 1)}</td>
               <td>{stats[t].ev == null ? "–" : stats[t].ev.toFixed(2)}</td>
-              <td className="mut" title={(stats[t].swaps || []).map((p) => `${legLabel(p.leg)} ${p.from} → ${p.to}`).join(", ")}>{stats[t].forfeit == null ? "–" : stats[t].forfeit === Infinity ? "∞" : stats[t].forfeit.toFixed(3)}</td>
+              <td className="mut" title={(stats[t].forfeitMap != null ? `map ${stats[t].forfeitMap.toFixed(3)} · strength ${stats[t].forfeitStr.toFixed(3)} at ${Math.round(100 * stats[t].strengthW)}%` : "") + ((stats[t].swaps || []).length ? " · " + stats[t].swaps.map((p) => `${legLabel(p.leg)} ${p.from} → ${p.to}`).join(", ") : "")}>{stats[t].forfeit == null ? "–" : stats[t].forfeit === Infinity ? "∞" : stats[t].forfeit.toFixed(3)}</td>
               <td className="fin">{stats[t].dili == null ? "–" : stats[t].dili.toFixed(2)}</td>
             </tr>
           ))}

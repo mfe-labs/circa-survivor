@@ -1,5 +1,5 @@
 // DILI: EV net of what the team is worth to the rest of the entry's season (the map); and the futures-market prior.
-import { buildData, computeEV, computeDili, planMap, spentTeams, customSummary, fitParams, fvFor } from "../src/CircaSurvivorPlanner.jsx";
+import { buildData, computeEV, computeDili, planMap, spentTeams, customSummary, fitParams, fvFor, strengthWeight } from "../src/CircaSurvivorPlanner.jsx";
 import { priorFromFutures } from "../src/ratings.js";
 import { OPP, ALL_TEAMS, LEGS, TG_TEAMS, XM_TEAMS } from "../src/schedule.js";
 import picks from "../data/picks.json"; import actuals from "../data/actuals.json"; import odds from "../data/odds.json"; import ratings from "../data/ratings.json";
@@ -27,6 +27,11 @@ ok("burned teams get no DILI", (() => { const { r } = run(["KC"]); return r.KC.d
 ok("burning a stud names the week it costs", rows.KC.swaps.length >= 1 && rows.KC.swaps.some((s) => s.from === "KC") && rows.KC.swaps.every((s) => s.from && s.to), rows.KC.swaps.map((s) => `${s.leg.id} ${s.from}→${s.to}`).join(", "));
 ok("deterministic", (() => { const { r } = run(); return homes.every((t) => Math.abs(r[t].dili - rows[t].dili) < 1e-12); })());
 
+// the forfeit blends the map forfeit with a strength forfeit that grows with future value
+ok("forfeit records both parts and lies between them", homes.every((t) => { const r = rows[t]; const lo = Math.min(r.forfeitMap, r.forfeitStr), hi = Math.max(r.forfeitMap, r.forfeitStr); return r.forfeitMap >= 1 && r.forfeitStr >= 1 && r.forfeit >= lo - 1e-9 && r.forfeit <= hi + 1e-9; }));
+ok("strength part is calibrated to the map part's average", (() => { const sc = Object.keys(OPP.W2).filter((t) => rows[t].forfeitMap != null); const a = sc.reduce((x, t) => x + Math.log(rows[t].forfeitMap), 0), b = sc.reduce((x, t) => x + Math.log(rows[t].forfeitStr), 0); return Math.abs(a - b) < 1e-6; })());
+ok("more future value, bigger strength forfeit", rows.KC.forfeitStr > rows.BAL.forfeitStr && rows.BAL.forfeitStr > rows.CIN.forfeitStr);
+ok("strength weight is half early and zero at the end", Math.abs(strengthWeight("W2") - 0.5) < 1e-9 && strengthWeight("W18") === 0 && strengthWeight("W16") > 0 && strengthWeight("W16") < 0.5, `W2 ${strengthWeight("W2")} W16 ${strengthWeight("W16").toFixed(2)} W18 ${strengthWeight("W18")}`);
 // the map: one distinct team per remaining leg, each with a game that leg, holidays filled with eligible teams
 const later = LEGS.filter((l) => l.id !== "W2");     // nothing is locked in the synthetic world, so W1 is still open too
 ok("map covers every open leg but the one being scored", map.length === later.length && map.every((p, i) => p.leg.id === later[i].id));
@@ -34,7 +39,7 @@ ok("map uses distinct teams that play that week", new Set(map.map((p) => p.team)
 ok("map puts eligible teams on the holidays", map.every((p) => (p.leg.id !== "TG" || TG_TEAMS.has(p.team)) && (p.leg.id !== "XM" || XM_TEAMS.has(p.team))));
 ok("map spends the studs", ["KC", "BUF", "SF"].every((t) => map.some((p) => p.team === t)));
 const lockedTo = (n) => ({ ...data, actuals: Object.fromEntries(LEGS.slice(0, n).map((l) => [l.id, { picks: {}, won: [], lost: [], pending: [] }])) });
-ok("nothing left to map in the last week", (() => { const late = lockedTo(LEGS.length - 1); const r = {}; for (const t of Object.keys(OPP.W18)) r[t] = { win: 0.6, pick: 1 / 16, fv: 0 }; computeEV("W18", r); const m = computeDili("W18", r, late, new Set(), P); return m.length === 0 && Object.keys(OPP.W18).every((t) => r[t].forfeit === 1 && r[t].dili === r[t].ev); })());
+ok("nothing left to map in the last week", (() => { const late = lockedTo(LEGS.length - 1); const r = {}; for (const t of Object.keys(OPP.W18)) r[t] = { win: 0.6, pick: 1 / 16, fv: 0 }; computeEV("W18", r); const m = computeDili("W18", r, late, new Set(), P); return m.length === 0 && Object.keys(OPP.W18).every((t) => r[t].forfeit === 1 && r[t].forfeitMap === 1 && r[t].dili === r[t].ev); })());
 ok("locked weeks are not mapped", (() => { const d = lockedTo(3); const r = mk("W5"); const m = computeDili("W5", r, d, new Set(), P); return m.every((p) => !["W1", "W2", "W3", "W5"].includes(p.leg.id)) && m.some((p) => p.leg.id === "W4"); })());
 // picks in weeks not completely over are soft: they neither spend a team nor fix a week
 const fin = (n, pend = []) => ({ ...data, actuals: Object.fromEntries(LEGS.slice(0, n).map((l, i) => [l.id, { picks: {}, won: [], lost: [], pending: i === n - 1 ? pend : [] }])) });

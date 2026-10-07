@@ -84,6 +84,10 @@ fetch fails, last season's market ratings regressed 40% toward average are the f
   levels come from seven seasons of nflverse closing lines vs ratings fit through Week 4 (residual SD ≈ 3 pts a
   month out, ≈ 6 pts twelve weeks out). This prices flexibility: a team that is the best option in a distant week
   only half the time is charged about half.
+- **Strength**: the forfeit is a log blend of the map forfeit and exp(β × future value), β set per refresh so the
+  two have the same mean log over the week's scored teams; weight `STRENGTH_W` = 0.5 × min(1, legs left ÷
+  `STRENGTH_SPAN` 15), so 0.5 now and 0 in the last week. Hedges the map's assumption of foresight re-planning.
+  Rows carry `forfeitMap`, `forfeitStr`, `strengthW`, `beta`; `forfeit` is the blend.
 - **Near legs**: the next `NEAR_LEGS` = 4 legs score each team by projected EV instead of win chance, from
   `projectField`, which steps the popularity model forward (field picks by the model, losers drop out, survivors
   stop holding what they picked). Further out the field model drifts, so plain win chance is used.
