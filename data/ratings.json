@@ -1,9 +1,9 @@
 {
- "updatedAt": "2026-10-07T15:37:33.871Z",
+ "updatedAt": "2026-10-07T19:55:20.737Z",
  "prev": {
-  "updatedAt": "2026-10-07T02:27:00.311Z",
+  "updatedAt": "2026-10-07T15:37:33.871Z",
   "ratings": {
-   "ARI": -3.6,
+   "ARI": -3.8,
    "ATL": -1.8,
    "BAL": 2.8,
    "BUF": 5,
@@ -13,7 +13,7 @@
    "CLE": -4.5,
    "DAL": 1.5,
    "DEN": 3.1,
-   "DET": 2.6,
+   "DET": 2.7,
    "GB": -0.2,
    "HOU": 1.6,
    "IND": -0.8,
@@ -34,7 +34,7 @@
    "SF": 3.3,
    "TB": -2.7,
    "TEN": -6.3,
-   "WAS": -2.8
+   "WAS": -2.9
   }
  },
  "source": "market spreads: 93 games this season (nflverse closing lines + current book), anchored to the Super Bowl futures market",
@@ -126,7 +126,7 @@
   "BAL": 2.8,
   "BUF": 5,
   "CAR": -0.9,
-  "CHI": 1.6,
+  "CHI": 1.5,
   "CIN": 2,
   "CLE": -4.5,
   "DAL": 1.5,
