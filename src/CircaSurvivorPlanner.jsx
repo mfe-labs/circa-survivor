@@ -892,14 +892,19 @@ const CSS = `
 .csp .maptab tr.conflict td:first-child { box-shadow:inset 3px 0 0 var(--red); }
 .csp .maptab tr.conflict td.why { color:var(--red); }
 .csp .chip.sm { display:inline-block; min-width:34px; text-align:center; padding:1px 5px; border-radius:4px; font-weight:600; font-size:10.5px; }
-.csp .dist.maptab td, .csp .dist.maptab td:first-child { height:auto; padding:7px 12px; vertical-align:middle; white-space:nowrap; text-align:center; }
+.csp .dist.maptab td, .csp .dist.maptab td:first-child { height:var(--mrh,40px); padding:0 12px; vertical-align:middle; white-space:nowrap; text-align:center; }
 .csp .dist.maptab th, .csp .dist.maptab th:first-child { text-align:center; vertical-align:middle; }
 .csp .maptab td:nth-child(2) { font-weight:400; }
 /* fixed widths for every column but the last, so Week/Pick/Game/Win sit in the same place on every map tab */
 .csp .dist.maptab th:nth-child(1) { width:140px; } .csp .dist.maptab th:nth-child(2) { width:100px; }
 .csp .dist.maptab th:nth-child(3) { width:130px; } .csp .dist.maptab th:nth-child(4) { width:64px; }
 .csp .dist.maptab th:nth-child(5):not(:last-child) { width:104px; } .csp .dist.maptab th:nth-child(6):not(:last-child) { width:112px; }
-.csp .dist.maptab td.why { text-align:left; white-space:normal; color:var(--ink2); min-width:320px; line-height:1.45; }
+.csp .dist.maptab td.why { text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:0; width:100%; color:var(--ink2); line-height:1.45; }
+.csp .mapv.tight { --mfs:11.5px; }
+.csp .mapv.tight .dist.maptab td { font-size:var(--mfs); }
+.csp .mapv.tight .chip { padding:2px 6px; font-size:10.5px; }
+.csp .mapv.tight .strip { margin:6px 0 10px; }
+.csp .mapv.tight .strip .v { font-size:20px; }
 .csp .maptab td.weak { color:var(--amber); font-weight:600; }
 .csp .maptab td.mut { color:var(--ink3); }
 .csp .maptab tr.past td { color:var(--ink3); }
@@ -1604,8 +1609,15 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
     return <tr key={l.id} className="past"><td>{legLabel(l)}</td><td>{mine ? teamChip(mine) : "–"}</td><td>{mine ? gameText(l.id, mine, data) : ""}</td><td>{mine ? pct0(lineFor(l.id, mine, data)?.win) : ""}</td>{!custom && <><td></td><td></td></>}<td className="why">{r}</td></tr>;
   };
   const holidayNote = (p) => (p.pool ? ` You still have ${p.poolLeft} of the ${p.pool} teams that can play it.` : "");
+  // every map has one row per week, so size the rows to the space left under the tabs and the boxes: no page scroll when it fits
+  const boxRef = useRef(null); const [rh, setRh] = useState(40);
+  useEffect(() => {
+    const el = boxRef.current; if (!el) return;
+    const measure = () => { const tb = el.querySelector(".maptab"); if (!tb) return; const top = tb.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop; const avail = el.clientHeight - top - (tb.tHead?.offsetHeight || 0) - LEGS.length - 28; setRh(Math.max(26, Math.min(44, Math.floor(avail / LEGS.length)))); };
+    measure(); const ro = new ResizeObserver(measure); ro.observe(el); return () => ro.disconnect();
+  }, [tab, maps.length]);
   return (
-    <div className="act mapv">
+    <div className={"act mapv" + (rh < 34 ? " tight" : "")} ref={boxRef} style={{ "--mrh": rh + "px" }}>
       <div className="maptabs">
         <button className={tab === "dili" ? "on" : ""} onClick={() => setTab("dili")} title="The Planner's pick each week, applied forward as if nothing changes">Claude's DILI Map</button>
         <button className={tab === "96" ? "on" : ""} onClick={() => setTab("96")} title="The plan the 96 jiggled seasons agree on">Claude's 96 Map</button>
@@ -1639,7 +1651,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
                   <td><PickPicker legId={l.id} team={r.team} data={data} usedAt={cs.usedAt} onPick={(t) => setMapPick(l.id, t)} canEdit={canEdit} conflict={r.conflict} /></td>
                   <td>{r.team ? gameText(l.id, r.team, data) : ""}</td>
                   <td className={r.win != null && r.win < 0.6 ? "weak" : ""}>{pct0(r.win)}</td>
-                  <td className="why">{note}</td>
+                  <td className="why" title={note}>{note}</td>
                 </tr>
               );
             }
@@ -1657,7 +1669,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
                 <td className={p.win != null && p.win < 0.6 ? "weak" : ""}>{pct0(p.win)}</td>
                 <td>{tab === "96" ? (p.team ? `${p.held}/${p.samples}` : "") : (p.dili != null ? p.dili.toFixed(2) : "")}</td>
                 <td className="bk">{p.backup ? <>{teamChip(p.backup, true)} {tab === "96" ? `${p.backupHeld}/${p.samples}` : p.backupDili.toFixed(2)}</> : "–"}</td>
-                <td className="why">{why}</td>
+                <td className="why" title={why}>{why}</td>
               </tr>
             );
           })}
