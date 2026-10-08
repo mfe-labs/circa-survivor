@@ -738,18 +738,18 @@ const CSS = `
 
 /* frozen left block: EV | W% | P% | Team */
 .csp .L { position:sticky; z-index:2; background:var(--surface); height:var(--rh); text-align:center; }
-/* frozen block: what we observe (W%, P%, Future) then what we conclude (EV, DILI); 348px total */
+/* frozen block: what we observe (W%, P%, Future) then what we conclude (EV, DILI); 360px total */
 .csp .L.wp { left:0; width:70px; min-width:70px; }
-.csp .L.pp { left:70px; width:66px; min-width:66px; }
-.csp .L.fv { left:136px; width:66px; min-width:66px; }
-.csp .L.ev { left:202px; width:70px; min-width:70px; }
-.csp .L.dili { left:272px; width:76px; min-width:76px; }
-.csp .L.team { left:348px; width:var(--teamw,100px); min-width:var(--teamw,100px); text-align:left; padding:0 8px 0 12px; font-weight:600; }
-.csp .L.pctl { left:0; width:348px; min-width:348px; padding:0; }
+.csp .L.pp { left:70px; width:78px; min-width:78px; }
+.csp .L.fv { left:148px; width:66px; min-width:66px; }
+.csp .L.ev { left:214px; width:70px; min-width:70px; }
+.csp .L.dili { left:284px; width:76px; min-width:76px; }
+.csp .L.team { left:360px; width:var(--teamw,100px); min-width:var(--teamw,100px); text-align:left; padding:0 8px 0 12px; font-weight:600; }
+.csp .L.pctl { left:0; width:360px; min-width:360px; padding:0; }
 .csp .sum td.pctl { top:0; height:calc(var(--th) + var(--n) * var(--rh)); border-bottom:1px solid var(--rule); }
 /* the board's controls: a plain block pinned over the table's top-left corner, laid out on its own terms */
 .csp .corner { position:sticky; top:0; left:0; height:0; z-index:7; }
-.csp .controls { position:absolute; left:0; top:0; width:348px; height:calc(var(--th) + var(--n) * var(--rh)); box-sizing:border-box; padding:0 12px 0 16px; background:var(--panel); border-bottom:1px solid var(--rule); display:flex; flex-direction:column; justify-content:center; gap:10px; }
+.csp .controls { position:absolute; left:0; top:0; width:360px; height:calc(var(--th) + var(--n) * var(--rh)); box-sizing:border-box; padding:0 12px 0 16px; background:var(--panel); border-bottom:1px solid var(--rule); display:flex; flex-direction:column; justify-content:center; gap:10px; }
 .csp .controls .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .csp .sum tr.top th { background:var(--panel); }
 
@@ -759,7 +759,7 @@ const CSS = `
 .csp .controls .note { font-size:11px; color:var(--ink3); white-space:normal; line-height:1.3; max-width:180px; }
 .csp .controls .note.msg { color:var(--ink); }
 .csp .controls .note.err { color:var(--red); }
-.csp .L.entry { left:348px; width:var(--teamw,116px); min-width:var(--teamw,116px); text-align:right; padding:0 10px 0 0; }
+.csp .L.entry { left:360px; width:var(--teamw,116px); min-width:var(--teamw,116px); text-align:right; padding:0 10px 0 0; }
 .csp td.L.dili.num { color:var(--ink); font-weight:600; }
 .csp td.L.num .v { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; height:100%; }
 .csp td.L.num .v .n { grid-column:2; }
@@ -807,9 +807,10 @@ const CSS = `
 /* an eliminated entry: struck through and faded, still selectable so its history stays readable */
 .csp .seg button.out .nm { text-decoration:line-through; text-decoration-thickness:1px; opacity:.6; }
 .csp .seg button.out .n { color:var(--red); opacity:.85; }
-.csp .sum tr.out td { opacity:.5; }
+.csp .sum tr.out td { color:var(--ink3); }
+.csp .sum tr.out td > * { opacity:.5; }
 .csp .sum tr.out td.entry .nm { text-decoration:line-through; text-decoration-thickness:1px; }
-.csp .sum tr.out.sel td { opacity:.62; }
+.csp .sum tr.out.sel td > * { opacity:.62; }
 .csp .sum td.entry .tag { margin-left:7px; font-size:10px; font-weight:500; color:var(--red); letter-spacing:.01em; }
 /* selected entry: the same wash across the row inside a soft blue frame */
 .csp .sum tr.sel td { background:var(--sel-bg); border-top:2px solid var(--sel-line); border-bottom:2px solid var(--sel-line); }
@@ -821,6 +822,7 @@ const CSS = `
 .csp .sum td.s .chip { display:inline-block; min-width:38px; padding:2px 5px; border-radius:5px; font-size:11px; font-weight:600; line-height:16px; }
 .csp .sum td.empty { color:var(--rule2); font-weight:400; }
 .csp .sum tr.gap td { height:var(--gap); background:var(--paper); cursor:default; position:sticky; top:calc(var(--th) + var(--n) * var(--rh)); z-index:4; border-bottom:1px solid var(--rule); }
+.csp .sum tr.gap td:first-child { left:0; z-index:6; }
 .csp .sum tr.hdr2 th { top:calc(var(--th) + var(--n) * var(--rh) + var(--gap)); }
 .csp .sum tr.hdr2 th.L { z-index:5; }
 .csp .sum tr.top th, .csp .sum tr.top td { border-top:none; }
@@ -999,10 +1001,6 @@ const CSS = `
   .csp .maptab tr.cur td:first-child, .csp .maptab tr.conflict td:first-child { box-shadow:none; }
   .csp .dist.maptab tr.past td.why { grid-column:5 / 6; white-space:normal; }
   /* the pinned entry name stays opaque when the schedule slides under it */
-  /* the pinned rows stay opaque so the board scrolling under them never shows through */
-  .csp .sum tr.out td, .csp .sum tr.out.sel td { opacity:1; color:var(--ink3); }
-  .csp .sum tr.out td > * { opacity:.5; }
-  .csp .sum tr.gap td:first-child { left:0; z-index:6; }
 
   /* Actuals */
   .csp .legcard .hd2 { padding:10px 12px; }
@@ -1204,7 +1202,7 @@ export default function CircaSurvivorPlanner() {
   const [fit, setFit] = useState({ cw: 48, teamw: 116 });
   useEffect(() => {
     const el = wrapRef.current; if (!el) return;
-    const LEFT = 348, MIN_CW = 48, MIN_TEAM = 116;
+    const LEFT = 360, MIN_CW = 48, MIN_TEAM = 116;
     const measure = () => {
       const w = el.clientWidth - LEFT - MIN_TEAM;
       const cw = Math.max(MIN_CW, Math.floor(w / LEGS.length));
