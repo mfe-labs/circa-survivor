@@ -718,7 +718,7 @@ const CSS = `
 .csp .seg button.on .n { color:var(--ink2); }
 
 /* ---- the board ---- */
-.csp .wrap { flex:1; min-height:0; overflow:auto; background:var(--surface); border-top:1px solid var(--rule); }
+.csp .wrap { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; background:var(--surface); border-top:1px solid var(--rule); }
 .csp table { border-collapse:separate; border-spacing:0; font-size:12px; }
 .csp th, .csp td { padding:0; border-bottom:1px solid var(--rule); white-space:nowrap; }
 .csp th { position:sticky; top:0; z-index:3; height:var(--th); background:var(--paper); color:var(--ink2); font-weight:500; font-size:12px; text-align:center; vertical-align:middle; line-height:1.15; cursor:pointer; user-select:none; border-bottom:1px solid var(--rule2); }
@@ -854,7 +854,7 @@ const CSS = `
 .csp .audit td.mut { color:var(--ink3); }
 
 /* ---- actuals ---- */
-.csp .act { flex:1; min-height:0; overflow:auto; padding:4px 16px 24px; border-top:1px solid var(--rule); background:var(--surface); }
+.csp .act { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; padding:4px 16px 24px; border-top:1px solid var(--rule); background:var(--surface); }
 .csp .strip { display:flex; align-items:stretch; gap:0; margin:10px 0 18px; flex-wrap:wrap; }
 .csp .strip .fig { padding:6px 28px 6px 0; margin-right:28px; border-right:1px solid var(--rule); }
 .csp .strip .fig:last-child { border-right:none; }
