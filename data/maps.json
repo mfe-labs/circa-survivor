@@ -38,6 +38,29 @@
     "W13": "DEN",
     "W15": "GB"
    }
+  },
+  {
+   "id": "muztdbty",
+   "name": "Locks",
+   "entry": "CIRCAmcised-2",
+   "picks": {
+    "W5": "HOU",
+    "W6": "NE",
+    "W7": "NYJ",
+    "W8": "CIN",
+    "W9": "PHI",
+    "W10": "IND",
+    "W11": "BUF",
+    "TG": "LAR",
+    "W12": "JAX",
+    "W13": "DEN",
+    "W14": "SEA",
+    "W15": "GB",
+    "XM": "CHI",
+    "W16": "BAL",
+    "W17": "DAL",
+    "W18": "CAR"
+   }
   }
  ]
 }
