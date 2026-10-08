@@ -1606,7 +1606,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
   const pastRow = (l) => {
     const a = data.actuals[l.id], mine = entry.picks[l.id];
     const r = !mine ? "No pick" : a.won.includes(mine) ? "Won" : a.lost.includes(mine) ? "Lost" : "In progress";
-    return <tr key={l.id} className="past"><td>{legLabel(l)}</td><td>{mine ? teamChip(mine) : "–"}</td><td>{mine ? gameText(l.id, mine, data) : ""}</td><td>{mine ? pct0(lineFor(l.id, mine, data)?.win) : ""}</td>{!custom && <><td></td><td></td></>}<td className="why">{r}</td></tr>;
+    return <tr key={l.id} className="past"><td>{legLabel(l)}</td><td>{mine ? teamChip(mine) : "–"}</td><td>{mine ? gameText(l.id, mine, data) : ""}</td><td>{mine ? pct0(lineFor(l.id, mine, data)?.win) : ""}</td><td></td><td></td><td className="why">{r}</td></tr>;
   };
   const holidayNote = (p) => (p.pool ? ` You still have ${p.poolLeft} of the ${p.pool} teams that can play it.` : "");
   // every map has one row per week, so size the rows to the space left under the tabs and the boxes: no page scroll when it fits
@@ -1632,7 +1632,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
       </div>
       <table className="dist maptab">
         <thead>{custom
-          ? <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th>Notes</th></tr>
+          ? <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th></th><th></th><th>Notes</th></tr>
           : tab === "96"
           ? <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title={`How many of ${cons.samples} jiggled seasons put this team here`}>Held</th><th title="Runner-up by count, not used elsewhere on this map">Backup</th><th>Why</th></tr>
           : <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title="DILI for that week, scored as the Planner scores it">DILI</th><th title="Second-best DILI that week">Backup</th><th>Why</th></tr>}</thead>
@@ -1651,6 +1651,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
                   <td><PickPicker legId={l.id} team={r.team} data={data} usedAt={cs.usedAt} onPick={(t) => setMapPick(l.id, t)} canEdit={canEdit} conflict={r.conflict} /></td>
                   <td>{r.team ? gameText(l.id, r.team, data) : ""}</td>
                   <td className={r.win != null && r.win < 0.6 ? "weak" : ""}>{pct0(r.win)}</td>
+                  <td></td><td></td>
                   <td className="why" title={note}>{note}</td>
                 </tr>
               );
