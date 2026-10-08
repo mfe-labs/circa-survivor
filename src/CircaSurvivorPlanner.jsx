@@ -872,8 +872,9 @@ const CSS = `
 .csp .maptabs > button.add { font-size:17px; font-weight:400; padding:0 12px; color:var(--ink3); }
 .csp .maptabs .tabact { margin-left:auto; display:flex; gap:6px; align-self:center; }
 .csp .strip .v.bad { color:var(--red); }
-.csp .picker { position:relative; display:inline-block; vertical-align:middle; }
-.csp .picker .pk { display:inline-flex; align-items:center; gap:4px; padding:0 3px; margin:-1px 0; vertical-align:middle; border:1px solid transparent; border-radius:6px; background:none; font:inherit; cursor:pointer; }
+.csp .maptab .pc { display:inline-flex; align-items:center; height:22px; vertical-align:middle; }
+.csp .picker { position:relative; display:inline-flex; vertical-align:middle; }
+.csp .picker .pk { display:inline-flex; align-items:center; gap:4px; padding:0 3px; margin:0; height:22px; box-sizing:border-box; vertical-align:middle; border:1px solid transparent; border-radius:6px; background:none; font:inherit; cursor:pointer; }
 .csp .picker .pk:hover { border-color:var(--rule2); background:var(--surface); }
 .csp .picker .pk.bad { border-color:var(--red); }
 .csp .picker .pk { position:relative; }
@@ -892,18 +893,23 @@ const CSS = `
 .csp .maptab tr.conflict td:first-child { box-shadow:inset 3px 0 0 var(--red); }
 .csp .maptab tr.conflict td.why { color:var(--red); }
 .csp .chip.sm { display:inline-block; min-width:34px; text-align:center; padding:1px 5px; border-radius:4px; font-weight:600; font-size:10.5px; }
-.csp .dist.maptab td, .csp .dist.maptab td:first-child { height:var(--mrh,40px); padding:0 12px; vertical-align:middle; white-space:nowrap; text-align:center; }
+.csp .dist.maptab td, .csp .dist.maptab td:first-child { height:var(--mrh,40px); box-sizing:border-box; padding:0 12px; vertical-align:middle; white-space:nowrap; text-align:center; }
 .csp .dist.maptab th, .csp .dist.maptab th:first-child { text-align:center; vertical-align:middle; }
 .csp .maptab td:nth-child(2) { font-weight:400; }
-/* fixed widths for every column but the last, so Week/Pick/Game/Win sit in the same place on every map tab */
+/* one fixed grid for every map tab: seven columns with set widths (the last takes the rest) and rows of one set
+   height, so columns and rows sit in exactly the same place as you switch tabs */
+.csp .dist.maptab { table-layout:fixed; width:100%; }
 .csp .dist.maptab th:nth-child(1) { width:140px; } .csp .dist.maptab th:nth-child(2) { width:100px; }
 .csp .dist.maptab th:nth-child(3) { width:130px; } .csp .dist.maptab th:nth-child(4) { width:64px; }
-.csp .dist.maptab th:nth-child(5):not(:last-child) { width:104px; } .csp .dist.maptab th:nth-child(6):not(:last-child) { width:112px; }
-.csp .dist.maptab td.why { text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:0; width:100%; color:var(--ink2); line-height:1.45; }
+.csp .dist.maptab th:nth-child(5) { width:104px; } .csp .dist.maptab th:nth-child(6) { width:112px; }
+.csp .dist.maptab thead th { height:34px; box-sizing:border-box; }
+.csp .dist.maptab tbody tr { height:var(--mrh,40px); }
+.csp .dist.maptab td.why { text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--ink2); line-height:1.45; }
+.csp .mapv .strip { height:84px; box-sizing:border-box; overflow:hidden; margin:10px 0 14px; }
+.csp .mapv .strip .k { white-space:nowrap; }
 .csp .mapv.tight { --mfs:11.5px; }
 .csp .mapv.tight .dist.maptab td { font-size:var(--mfs); }
 .csp .mapv.tight .chip { padding:2px 6px; font-size:10.5px; }
-.csp .mapv.tight .strip { margin:6px 0 10px; }
 .csp .mapv.tight .strip .v { font-size:20px; }
 .csp .maptab td.weak { color:var(--amber); font-weight:600; }
 .csp .maptab td.mut { color:var(--ink3); }
@@ -989,6 +995,8 @@ const CSS = `
   .csp .strip { margin:8px 0 12px; gap:8px 0; }
   .csp .strip .fig { flex:1 1 42%; border-right:none; margin-right:0; padding:4px 12px 4px 0; }
   .csp .mapv .strip .fig { flex-basis:100%; }
+  .csp .mapv .strip, .csp .mapv.tight .strip { height:auto; overflow:visible; }
+  .csp .mapv .strip .k { white-space:normal; }
   .csp .strip .v { font-size:20px; }
   .csp .strip .actions { margin-left:0; flex-direction:row; flex-wrap:wrap; }
   .csp .dist.maptab, .csp .dist.maptab tbody { display:block; width:100%; }
@@ -1547,9 +1555,9 @@ function PickPicker({ legId, team, data, usedAt, onPick, canEdit, conflict }) {
     return () => { document.removeEventListener("mousedown", out); document.removeEventListener("keydown", esc); };
   }, [open]);
   const opts = Object.keys(OPP[legId]).map((t) => ({ t, win: lineFor(legId, t, data)?.win ?? null })).sort((a, b) => (b.win ?? 0) - (a.win ?? 0));
-  if (!canEdit) return team ? teamChip(team) : <span className="mut">–</span>;
+  if (!canEdit) return <span className="pc">{team ? teamChip(team) : <span className="mut">–</span>}</span>;
   return (
-    <span className="picker" ref={ref}>
+    <span className="picker pc" ref={ref}>
       <button className={"pk" + (conflict ? " bad" : "")} onClick={() => setOpen((o) => !o)} title="Change this week's pick">
         {team ? teamChip(team) : <span className="none">pick</span>}<span className="caret">▾</span>
       </button>
@@ -1606,7 +1614,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
   const pastRow = (l) => {
     const a = data.actuals[l.id], mine = entry.picks[l.id];
     const r = !mine ? "No pick" : a.won.includes(mine) ? "Won" : a.lost.includes(mine) ? "Lost" : "In progress";
-    return <tr key={l.id} className="past"><td>{legLabel(l)}</td><td>{mine ? teamChip(mine) : "–"}</td><td>{mine ? gameText(l.id, mine, data) : ""}</td><td>{mine ? pct0(lineFor(l.id, mine, data)?.win) : ""}</td><td></td><td></td><td className="why">{r}</td></tr>;
+    return <tr key={l.id} className="past"><td>{legLabel(l)}</td><td><span className="pc">{mine ? teamChip(mine) : "–"}</span></td><td>{mine ? gameText(l.id, mine, data) : ""}</td><td>{mine ? pct0(lineFor(l.id, mine, data)?.win) : ""}</td><td></td><td></td><td className="why">{r}</td></tr>;
   };
   const holidayNote = (p) => (p.pool ? ` You still have ${p.poolLeft} of the ${p.pool} teams that can play it.` : "");
   // every map has one row per week, so size the rows to the space left under the tabs and the boxes: no page scroll when it fits
@@ -1665,7 +1673,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
             return (
               <tr key={l.id} className={cls + (p.team ? "" : " dead")}>
                 <td>{legLabel(l)}</td>
-                <td>{p.team ? teamChip(p.team) : "–"}</td>
+                <td><span className="pc">{p.team ? teamChip(p.team) : "–"}</span></td>
                 <td>{p.team ? gameText(l.id, p.team, data) : ""}</td>
                 <td className={p.win != null && p.win < 0.6 ? "weak" : ""}>{pct0(p.win)}</td>
                 <td>{tab === "96" ? (p.team ? `${p.held}/${p.samples}` : "") : (p.dili != null ? p.dili.toFixed(2) : "")}</td>
