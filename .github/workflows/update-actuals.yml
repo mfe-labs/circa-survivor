@@ -24,7 +24,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: sudo apt-get install -y -qq poppler-utils >/dev/null
+      - run: sudo apt-get update -qq >/dev/null && sudo apt-get install -y -qq poppler-utils >/dev/null
       - run: npm ci
       - name: Picks from Circa's Selections PDF, results from ESPN
         run: node scripts/fetch-actuals.mjs
