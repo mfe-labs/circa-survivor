@@ -888,6 +888,7 @@ const CSS = `
 .csp .picker .opt .wh { font-size:11px; color:var(--red); text-align:right; }
 .csp .picker .opt.used .g, .csp .picker .opt.used .w { text-decoration:line-through; color:var(--ink3); }
 .csp .picker .opt.used .chip { opacity:.5; }
+.csp .picker .opt.empty { grid-template-columns:1fr; border-top:1px solid var(--rule); border-radius:0 0 5px 5px; margin-top:3px; padding-top:7px; color:var(--ink2); }
 .csp .maptab tr.conflict td:first-child { box-shadow:inset 3px 0 0 var(--red); }
 .csp .maptab tr.conflict td.why { color:var(--red); }
 .csp .chip.sm { display:inline-block; min-width:34px; text-align:center; padding:1px 5px; border-radius:4px; font-weight:600; font-size:10.5px; }
@@ -1552,6 +1553,7 @@ function PickPicker({ legId, team, data, usedAt, onPick, canEdit, conflict }) {
           <button key={o.t} className={"opt" + (w ? " used" : "") + (o.t === team ? " on" : "")} onClick={() => { onPick(o.t); setOpen(false); }}>
             {teamChip(o.t, true)}<span className="g">{gameText(legId, o.t, data)}</span><span className="w">{pct0(o.win)}</span><span className="wh">{w || ""}</span>
           </button>); })}
+        <button className={"opt empty" + (team ? "" : " on")} onClick={() => { onPick(null); setOpen(false); }} title="Leave this week open for now"><span className="g">Empty</span></button>
       </div>}
     </span>
   );
@@ -1583,7 +1585,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
     onMaps((m) => ({ maps: m.maps.filter((x) => x.id !== custom.id) }), `Map: delete "${custom.name}"`);
     setTab("dili");
   };
-  const setMapPick = (legId, team) => onMaps((m) => ({ maps: m.maps.map((x) => (x.id === custom.id ? { ...x, picks: { ...x.picks, [legId]: team } } : x)) }), `Map "${custom.name}": ${legId} ${team}`);
+  const setMapPick = (legId, team) => onMaps((m) => ({ maps: m.maps.map((x) => { if (x.id !== custom.id) return x; const picks = { ...x.picks }; if (team) picks[legId] = team; else delete picks[legId]; return { ...x, picks }; }) }), `Map "${custom.name}": ${legId} ${team || "empty"}`);
 
   const box = custom
     ? { winOut: cs.winOut, winNote: cs.winNote, weakest: cs.weakest, cheapLeg: cs.now,
