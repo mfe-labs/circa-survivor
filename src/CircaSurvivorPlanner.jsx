@@ -9,11 +9,12 @@ import actualsBundled from "../data/actuals.json";
 import oddsBundled from "../data/odds.json";
 import ratingsBundled from "../data/ratings.json";
 import mapsBundled from "../data/maps.json";
+import splashBundled from "../data/splash.json";
 
 const VERSION = "2.0";
 const TOKEN_KEY = "csp-github-token";
-const PATHS = { picks: "data/picks.json", actuals: "data/actuals.json", odds: "data/odds.json", ratings: "data/ratings.json", maps: "data/maps.json" };
-const BUNDLED = { picks: picksBundled, actuals: actualsBundled, odds: oddsBundled, ratings: ratingsBundled, maps: mapsBundled };
+const PATHS = { picks: "data/picks.json", actuals: "data/actuals.json", odds: "data/odds.json", ratings: "data/ratings.json", maps: "data/maps.json", splash: "data/splash.json" };
+const BUNDLED = { picks: picksBundled, actuals: actualsBundled, odds: oddsBundled, ratings: ratingsBundled, maps: mapsBundled, splash: splashBundled };
 
 // team cell colors: [background, text]
 const COLORS = {
@@ -61,7 +62,7 @@ const roundHalf = (v) => Math.round(v * 2) / 2;
 // status by number of contributing books
 const STATUS = { 0: "none", 1: "single", 2: "degraded" };
 const statusFor = (n, closing) => (closing ? "closing" : STATUS[n] || "consensus");
-const STATUS_TEXT = { consensus: "consensus of 3+ books", degraded: "2 books only (degraded)", single: "single book (provisional)", closing: "closing line from nflverse (game already played)", lookahead: "look-ahead spread from nflverse (no moneyline posted yet)", none: "no valid two-sided moneyline" };
+const STATUS_TEXT = { consensus: "consensus of 3+ books", degraded: "2 books only (degraded)", single: "single book (provisional)", closing: "closing line from nflverse (game already played)", lookahead: "look-ahead spread from nflverse (no moneyline posted yet)", final: "Thursday game is final", none: "no valid two-sided moneyline" };
 
 // One game's books → per-book de-vigged probabilities with exclusion reasons, plus the consensus.
 function consensusForGame(key, g) {
@@ -134,7 +135,7 @@ function computeEV(legId, rows) {
     const own = (r.pick || 0) * r.win, oppc = (rows[opp].pick || 0) * (rows[opp].win || 0);
     const Si = (r.pick || 0) + (S - own - oppc);
     r.raw = Si > 0 ? r.win / Si : null;
-    if (r.raw != null && r.pick) { wsum += r.pick * r.raw; psum += r.pick; }
+    if (r.raw != null && r.pick && r.win > 0 && r.win < 1) { wsum += r.pick * r.raw; psum += r.pick; }   // decided games (Thursday finals) stay in the denominator but not in the average
   }
   const mean = psum > 0 ? wsum / psum : 1;
   for (const t of teams) { const r = rows[t]; r.ev = r.raw == null ? null : r.raw / mean; }
@@ -142,7 +143,7 @@ function computeEV(legId, rows) {
 }
 // Everything the model needs, assembled from the four data files. `prev` is the same view built from the quotes
 // and ratings of the refresh before the latest one (games without a stored previous quote reuse the current one).
-function buildData({ picks, actuals, odds, ratings }, withPrev = true) {
+function buildData({ picks, actuals, odds, ratings, splash = null }, withPrev = true) {
   const legs = {};
   for (const l of LEGS) {
     const r = linesFromOdds(odds?.legs?.[l.id]);
@@ -151,7 +152,7 @@ function buildData({ picks, actuals, odds, ratings }, withPrev = true) {
   const data = {
     entries: Array.isArray(picks?.entries) ? picks.entries : [],
     legs, ratings: ratings?.ratings || null, ratingsAt: ratings?.updatedAt || null, ratingsSrc: ratings?.source || "", oddsAt: odds?.updatedAt || null,
-    actuals: actuals?.legs || {}, contest: actuals?.contest || { start: 0, pool: 0, share: 0 }, prev: null,
+    actuals: actuals?.legs || {}, contest: actuals?.contest || { start: 0, pool: 0, share: 0 }, prev: null, splash: splash || null,
   };
   if (withPrev && odds?.legs) {
     let any = false; const pl = {};
@@ -160,7 +161,7 @@ function buildData({ picks, actuals, odds, ratings }, withPrev = true) {
       for (const [k, g] of Object.entries(leg.games || {})) { if (g.prev?.books) { any = true; games[k] = { ...g, books: g.prev.books }; } else games[k] = g; }
       pl[id] = { ...leg, games };
     }
-    if (any) data.prev = buildData({ picks, actuals, odds: { ...odds, legs: pl, updatedAt: odds.prevUpdatedAt || null }, ratings: ratings?.prev?.ratings ? { ...ratings, ...ratings.prev, prev: null } : ratings }, false);
+    if (any) data.prev = buildData({ picks, actuals, odds: { ...odds, legs: pl, updatedAt: odds.prevUpdatedAt || null }, ratings: ratings?.prev?.ratings ? { ...ratings, ...ratings.prev, prev: null } : ratings, splash }, false);
   }
   return data;
 }
@@ -306,6 +307,7 @@ function projectField(legId, data, params) {
         const sc = {}; let tot = 0;
         for (const t of Object.keys(OPP[l.id])) { const w = lineFor(l.id, t, data)?.win; if (w == null || w < 0.5) continue; const v = Math.pow(w, params.a) * Math.exp(-params.b * fvFor(l.id, t, data)) * av[t]; sc[t] = v; tot += v; }
         p = {}; for (const t in sc) p[t] = tot > 0 ? sc[t] / tot : 0;
+        if (k === 0) p = applyAnchor(splashAnchor(l.id, data), p);
       }
       out[l.id] = { p, av: { ...av } };
       const S = Object.entries(p).reduce((s, [t, x]) => s + x * (lineFor(l.id, t, data)?.win ?? 0), 0);
@@ -486,8 +488,10 @@ export function diliPlan(data, picks, params = PRIOR) {
     let ev = false;
     if (now) { const mp = modelPick(l.id, data, params); if (Object.keys(mp).length) { for (const t in rows) rows[t].pick = mp[t] ?? 0; ev = true; } }
     else if (near) { for (const t in rows) rows[t].pick = near.p[t] || 0; ev = true; }
+    if (now) { const an = splashAnchor(l.id, data); if (an) for (const [t, f] of Object.entries(an.final)) if (rows[t]) rows[t].win = f === "W" ? 1 : 0; }
     if (ev && computeEV(l.id, rows).blanked) ev = false;
     if (!ev) for (const t in rows) rows[t].ev = rows[t].win;
+    if (now) { const an = splashAnchor(l.id, data); if (an) for (const t of Object.keys(an.final)) if (rows[t]) rows[t].ev = null; }
     computeDili(l.id, rows, data, burned, params, skip);
     const cands = Object.keys(OPP[l.id]).filter((t) => rows[t].dili != null).sort((a, b) => rows[b].dili - rows[a].dili);
     const [t1, t2] = cands, r1 = t1 ? rows[t1] : null, r2 = t2 ? rows[t2] : null;
@@ -542,7 +546,40 @@ function availabilityRaw(legId, data) {
   for (const t of ALL_TEAMS) out[t] = Math.max(0, 1 - (burned[t] || 0) / (live || 1));
   return out;
 }
-function modelPick(legId, data, params) {
+// ---------- Splash: the other $1,000 survivor field ----------
+// Splash shows its pick counts for the Thursday game the moment it kicks off, two days before Circa locks, and
+// both contests make a Thursday backer commit before kickoff, so that reading is Circa's own crowd seen early.
+// Across Weeks 1–4 the two fields ranked teams identically and Circa was sharper toward the top: Circa share ≈
+// Splash share^γ ÷ Z with γ = 1.2 and Z the week's Σ share^γ (about 0.7). The top pick's ratio ran 1.11–1.23
+// (log SD ≈ 0.05); mid-sized teams scatter more, and Circa holds holiday-pool teams Splash spends freely.
+// When the current week has a Thursday reading, the Thursday teams' shares are pinned to the mapped value and
+// everyone else's model share is scaled to fill the rest; a Thursday final sets that game's win chance to 0/1.
+const SPLASH_GAMMA = 1.2, ANCHOR_ERR = 0.06;
+function splashZ(data) {
+  return cached(data, "spz", "Z", () => {
+    const g = data.splash?.mapping?.gamma ?? SPLASH_GAMMA, zs = [];
+    for (const w of Object.values(data.splash?.weeks || {})) { if (!w.picks || !w.survived) continue; const n = w.survived + w.eliminated; zs.push(Object.values(w.picks).reduce((a, c) => a + Math.pow(c / n, g), 0)); }
+    return zs.length ? zs.reduce((a, b) => a + b, 0) / zs.length : 0.72;
+  });
+}
+function splashAnchor(legId, data) {
+  const th = data.splash?.weeks?.[legId]?.thursday;
+  if (!th?.picks || !th.alive || data.actuals?.[legId]) return null;
+  const g = data.splash?.mapping?.gamma ?? SPLASH_GAMMA, Z = splashZ(data), shares = {}, raw = {};
+  for (const [t, n] of Object.entries(th.picks)) { raw[t] = n / th.alive; shares[t] = Math.min(0.9, Math.pow(raw[t], g) / Z); }
+  return { shares, raw, final: th.final || {}, alive: th.alive, asOf: th.asOf || null, gamma: g, Z };
+}
+// pin the anchored teams and scale the rest to fill what is left; jitter > 0 draws the mapping's own error
+const applyAnchor = (anchor, p, jitter = 0, rng = null) => {
+  if (!anchor) return p;
+  const out = { ...p }; let A = 0, rest = 0;
+  for (const [t, v] of Object.entries(anchor.shares)) { out[t] = Math.min(0.95, v * (jitter ? Math.exp(jitter * gauss(rng)) : 1)); A += out[t]; }
+  for (const t of Object.keys(out)) if (!(t in anchor.shares)) rest += out[t];
+  const scale = rest > 0 ? Math.max(0, 1 - A) / rest : 0;
+  for (const t of Object.keys(out)) if (!(t in anchor.shares)) out[t] *= scale;
+  return out;
+};
+function modelPick(legId, data, params, raw = false) {
   const { a, b, c = 0 } = params;
   const av = availability(legId, data);
   const sc = {};
@@ -554,7 +591,7 @@ function modelPick(legId, data, params) {
   }
   const out = {};
   for (const t of Object.keys(sc)) out[t] = tot > 0 ? sc[t] / tot : 0;
-  return out;
+  return raw ? out : applyAnchor(splashAnchor(legId, data), out);
 }
 // Where P% could land by Saturday's lock. Lines keep moving until then, and the model raises win chance to a
 // high power, so a point of line movement swings the biggest favorites by several points of share. Every
@@ -598,10 +635,12 @@ function modelPickRange(legId, data, params, now = Date.now()) {
     if (!teams.length) return {};
     const top = teams.reduce((m, x) => (Math.pow(normCdf(x.z), a) * x.k > Math.pow(normCdf(m.z), a) * m.k ? x : m), teams[0]).t;
     const r = seededRng(7), sd = (LINE_MOVE * Math.sqrt(days / LOCK_DAYS)) / MARGIN_SD, acc = Object.fromEntries(teams.map((x) => [x.t, { p: [], ev: [] }]));
+    const anchor = splashAnchor(legId, data);
     for (let s = 0; s < RANGE_SAMPLES; s++) {
       const rows = {}; let tot = 0;
       for (const x of teams) { const win = normCdf(x.z + sd * gauss(r)); const v = win >= 0.5 ? Math.pow(win, a) * x.k * Math.exp((x.t === top ? errTop : errOther) * gauss(r)) : 0; rows[x.t] = { win, pick: v }; tot += v; }
       for (const t of Object.keys(OPP[legId])) { if (!rows[t]) rows[t] = { win: null, pick: 0 }; else rows[t].pick = tot > 0 ? rows[t].pick / tot : 0; }
+      if (anchor) { const p = applyAnchor(anchor, Object.fromEntries(Object.keys(OPP[legId]).map((t) => [t, rows[t].pick])), ANCHOR_ERR, r); for (const t of Object.keys(p)) rows[t].pick = p[t]; for (const [t, f] of Object.entries(anchor.final)) if (rows[t]) rows[t].win = f === "W" ? 1 : 0; }
       computeEV(legId, rows);
       for (const x of teams) { acc[x.t].p.push(rows[x.t].pick); if (rows[x.t].ev != null) acc[x.t].ev.push(rows[x.t].ev); }
     }
@@ -674,7 +713,7 @@ export function entryStatus(entry, actualLegs) {
   return { alive: true, leg: null };
 }
 
-export { modelPickRange, fvAt, bandError, strengthWeight, futureFor, marketLine, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
+export { modelPickRange, fvAt, bandError, strengthWeight, futureFor, marketLine, splashAnchor, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
 
 const CSS = `
 /* ---- tokens: paper, ink, one green ---- */
@@ -775,6 +814,7 @@ const CSS = `
 /* highlights: green on the best five EV / W% / DILI and on a cheap Future; red on a crowded P% */
 .csp td.L.num.hi { color:var(--green-ink); }
 .csp td.L.num.warn { color:var(--red); }
+.csp td.L.wp.num.fin { color:var(--ink3); font-weight:500; }
 .csp td.L.num.weak .n::after { content:""; display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--amber); margin-left:4px; vertical-align:2px; }
 .csp .team { box-shadow:inset 3px 0 0 var(--tc); }
 .csp .team .hd { display:inline-block; width:6px; height:6px; border-radius:50%; margin-left:5px; vertical-align:1px; background:var(--sand-ink); opacity:.7; }
@@ -1077,7 +1117,7 @@ export default function CircaSurvivorPlanner() {
     return () => { live = false; };
   }, [token]);
 
-  const data = useMemo(() => buildData({ picks: files.picks.json, actuals: files.actuals.json, odds: files.odds.json, ratings: files.ratings.json }), [files.picks, files.actuals, files.odds, files.ratings]);
+  const data = useMemo(() => buildData({ picks: files.picks.json, actuals: files.actuals.json, odds: files.odds.json, ratings: files.ratings.json, splash: files.splash?.json }), [files.picks, files.actuals, files.odds, files.ratings, files.splash]);
   const entries = data.entries;
   const canEdit = !!user;
 
@@ -1185,7 +1225,7 @@ export default function CircaSurvivorPlanner() {
   function computeStats(legId, data, params) {
     const act = data.actuals[legId];
     const actTot = act ? Object.values(act.picks).reduce((a, b) => a + b, 0) : 0;
-    const modelP = modelPick(legId, data, params);
+    const modelP = modelPick(legId, data, params), modelRaw = modelPick(legId, data, params, true);
     const hasModel = Object.keys(modelP).length > 0;
     const pick = act ? Object.fromEntries(Object.entries(act.picks).map(([t, n]) => [t, n / actTot])) : modelP;
     const rows = {};
@@ -1193,9 +1233,13 @@ export default function CircaSurvivorPlanner() {
       const mk = marketLine(legId, t, data);          // True Win % (market only) — null if no valid two-sided ML
       const disp = lineFor(legId, t, data);           // spread for display; may be a projection
       rows[t] = { win: mk ? mk.win : null, ml: mk ? mk.ml : null, oppMl: mk ? mk.oppMl : null, status: mk ? mk.status : "none", n: mk ? mk.n : 0, refBook: mk ? mk.refBook : null,
-        pick: (act || hasModel) ? (pick[t] ?? (disp ? 0 : null)) : null, spread: disp ? disp.spread : null, proj: disp ? disp.proj : false, pm: modelP[t], act: !!act };
+        pick: (act || hasModel) ? (pick[t] ?? (disp ? 0 : null)) : null, spread: disp ? disp.spread : null, proj: disp ? disp.proj : false, pm: modelRaw[t], act: !!act };
     }
+    const anchor = splashAnchor(legId, data);
+    if (anchor) for (const [t, f] of Object.entries(anchor.final)) { rows[t].win = f === "W" ? 1 : 0; rows[t].final = f; rows[t].status = "final"; }
+    if (anchor) for (const t of Object.keys(anchor.shares)) { rows[t].anchor = anchor.shares[t]; rows[t].anchorRaw = anchor.raw[t]; rows[t].anchorAlive = anchor.alive; }
     const ev = computeEV(legId, rows);
+    if (anchor) for (const t of Object.keys(anchor.final)) { rows[t].ev = null; rows[t].raw = null; }
     for (const t of ALL_TEAMS) rows[t].fv = data.ratings || act?.fv ? fvAt(legId, t, data) : null;
     if (!act && hasModel) { const rg = modelPickRange(legId, data, params); for (const t of ALL_TEAMS) if (rg[t]) Object.assign(rows[t], { pLo: rg[t].lo, pHi: rg[t].hi, evLo: rg[t].evLo, evHi: rg[t].evHi }); }
     return { rows, ev };
@@ -1364,8 +1408,8 @@ export default function CircaSurvivorPlanner() {
               const pr = (v) => Math.round(100 * v);
               return (
                 <tr key={team} className={usedLeg && usedLeg !== legId ? "gone" : ""}>
-                  <td className={"L wp num" + (st.win == null ? " blank" : st.winTop ? " hi" : "") + (st.status === "single" || st.status === "degraded" ? " weak" : "")} title={inLeg ? (st.win == null ? "No two-sided moneyline posted yet for this game" : `${pct(st.win)} — ${STATUS_TEXT[st.status]}${st.status !== "closing" ? ` (${st.n})` : ""} · e.g. ${st.refBook} ${fmtSp(st.ml)} / ${fmtSp(st.oppMl)}${st.dWin != null ? dTip("was", pct(st.win - st.dWin)) : ""}`) : ""}><Num d={st.dWin} kind="pct">{inLeg ? pct(st.win) : ""}</Num></td>
-                  <td className={"L pp num" + (st.pick == null ? " blank" : st.pick > 0.099 ? " warn" : "")} title={inLeg ? (st.act ? "Circa actual" : `field model ${pctP(st.pm)}${st.pLo != null ? ` · likely ${pr(st.pLo)}–${pr(st.pHi)} at lock (middle half of outcomes, given line movement and how far the model has missed so far)` : ""}${st.dPick != null ? dTip("was", pct(st.pick - st.dPick)) : ""}`) : ""}><Num d={st.dPick} kind={st.pick != null && st.pick < 0.0995 ? "pct1" : "pct"}>{inLeg ? pctP(st.pick) : ""}</Num></td>
+                  <td className={"L wp num" + (st.win == null ? " blank" : st.final ? " fin" : st.winTop ? " hi" : "") + (st.status === "single" || st.status === "degraded" ? " weak" : "")} title={inLeg ? (st.win == null ? "No two-sided moneyline posted yet for this game" : `${pct(st.win)} — ${STATUS_TEXT[st.status]}${st.status !== "closing" ? ` (${st.n})` : ""} · e.g. ${st.refBook} ${fmtSp(st.ml)} / ${fmtSp(st.oppMl)}${st.dWin != null ? dTip("was", pct(st.win - st.dWin)) : ""}`) : ""}><Num d={st.final ? null : st.dWin} kind="pct">{inLeg ? (st.final ? (st.final === "W" ? "won" : "lost") : pct(st.win)) : ""}</Num></td>
+                  <td className={"L pp num" + (st.pick == null ? " blank" : st.pick > 0.099 ? " warn" : "")} title={inLeg ? (st.act ? "Circa actual" : st.anchor != null ? `Splash Thursday reading: ${pctP(st.anchorRaw)} of ${st.anchorAlive.toLocaleString()} entries → ${pctP(st.anchor)} here (Circa ≈ Splash^1.2); the field model had ${pctP(st.pm)}` : `field model ${pctP(st.pm)}${st.pLo != null ? ` · likely ${pr(st.pLo)}–${pr(st.pHi)} at lock (middle half of outcomes, given line movement and how far the model has missed so far)` : ""}${st.dPick != null ? dTip("was", pct(st.pick - st.dPick)) : ""}`) : ""}><Num d={st.dPick} kind={st.pick != null && st.pick < 0.0995 ? "pct1" : "pct"}>{inLeg ? pctP(st.pick) : ""}</Num></td>
                   <td className={"L fv num" + (st.fv == null ? " blank" : Math.round(st.fv * 10) / 10 <= 2 ? " hi" : "")} title={st.fv == null ? "No power ratings yet" : st.fvRaw != null ? `About ${st.fv.toFixed(1)} strong-favorite weeks left that this entry would use: ${st.fvRaw.toFixed(1)} for the team on its own, ${st.fvEntry.toFixed(1)} counted against the teams you still hold, blended ${Math.round(100 * st.fvW)}/${Math.round(100 * (1 - st.fvW))}${st.forfeit != null && Number.isFinite(st.forfeit) ? ` · costs this entry ${Math.round(100 * (st.forfeit - 1))}% to spend` : ""}` : `About ${st.fv.toFixed(1)} strong-favorite weeks left after this one (a 75% spot counts ~1, 65% counts ½, 55% a little)`}>
                     <span className="v"><span className="n">{st.fv == null ? "–" : st.fv.toFixed(1)}</span></span>
                   </td>
@@ -1434,7 +1478,7 @@ function AuditPanel({ legId, data, params, merr, stats, evNote, map }) {
         <div className="sec">
           <h4>P% — pick popularity</h4>
           {act ? <p>Locked week: P% is Circa's posted distribution.</p>
-            : <p>Field model <code>win^{params.a} × e^(−{params.b} × future value) × e^(−{params.c ?? 0} × holiday pressure) × availability</code>, normalized over favored teams. Fit on {params.legs} week{params.legs === 1 ? "" : "s"} of Circa actuals, weighting each team's miss by its share{merr ? <>; average miss so far {pc(merr.err)} per team</> : null}. Holiday pressure is how scarce an upcoming holiday pool is and how close it is; with {params.c ? "the weight the data has chosen" : "the weight still at zero, since nothing in the data yet says the field is saving holiday teams"}. The fit uses each past week's future values as they stood at that week's lock, not today's. The P% band re-runs the model over line movement and the model's own misses so far: a factor of about ×{Math.exp(params.errTop ?? 0.1).toFixed(2)} on its top pick and ×{Math.exp(params.errOther ?? 0.35).toFixed(2)} on everyone else, measured on {params.nTop ?? 0} weeks.</p>}
+            : <p>Field model <code>win^{params.a} × e^(−{params.b} × future value) × e^(−{params.c ?? 0} × holiday pressure) × availability</code>, normalized over favored teams. Fit on {params.legs} week{params.legs === 1 ? "" : "s"} of Circa actuals, weighting each team's miss by its share{merr ? <>; average miss so far {pc(merr.err)} per team</> : null}. Holiday pressure is how scarce an upcoming holiday pool is and how close it is; with {params.c ? "the weight the data has chosen" : "the weight still at zero, since nothing in the data yet says the field is saving holiday teams"}. The fit uses each past week's future values as they stood at that week's lock, not today's.{(() => { const an = splashAnchor(legId, data); return an ? ` Splash's Thursday reading for this week: ${Object.entries(an.raw).map(([t, v]) => `${t} ${(100 * v).toFixed(1)}%`).join(", ")} of ${an.alive.toLocaleString()} entries, mapped to ${Object.entries(an.shares).map(([t, v]) => `${t} ${(100 * v).toFixed(0)}%`).join(", ")} here (Circa ≈ Splash^${an.gamma}); those shares are pinned and the rest of the field is scaled to fit${Object.keys(an.final).length ? `; the Thursday game is final (${Object.entries(an.final).map(([t, f]) => `${t} ${f === "W" ? "won" : "lost"}`).join(", ")})` : ""}.` : ""; })()} The P% band re-runs the model over line movement and the model's own misses so far: a factor of about ×{Math.exp(params.errTop ?? 0.1).toFixed(2)} on its top pick and ×{Math.exp(params.errOther ?? 0.35).toFixed(2)} on everyone else, measured on {params.nTop ?? 0} weeks.</p>}
         </div>
         <div className="sec">
           <h4>DILI — do I love it?</h4>

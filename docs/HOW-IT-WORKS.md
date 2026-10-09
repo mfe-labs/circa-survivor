@@ -14,6 +14,10 @@ each with its own pick. Each team once per entry. Tie = loss. Schedule is hard-c
   exists, that spread is stored as a look-ahead line (`books.nflverse.lookahead`), refreshed every run and replaced
   by real prices as they arrive. In the app it gives a win chance for planning (Future, DILI, the Map, the grid
   cell) but never a True Win %, so W% and EV wait for moneylines. The ratings fit already uses those spreads.
+- **Splash** (`splash.json`, hand-entered from Jeremy's screenshots of the Splash x Polymarket $21M survivor, a
+  $1,000 field of ~22,700): each complete week's pick counts, and for the current week the reading Splash shows the
+  moment the Thursday game kicks off (`thursday.picks`, `alive`) plus that game's result (`final`). Read-only in the
+  app. Weeks 1–4: same rankings as Circa, Circa sharper toward the top; Circa share ≈ Splash share^1.2 ÷ Z.
 - **True Win %** is computed in the app, per game: each book's two prices are de-vigged on their own (implied =
   100/(ML+100) or −ML/(−ML+100), normalized to sum to 100%), the consensus is the **median** of the books' home-win
   probabilities, and the away side is 1 − home (medians of the two sides need not sum to 1). Status: 3+ books =
@@ -48,6 +52,11 @@ each with its own pick. Each team once per entry. Tie = loss. Schedule is hard-c
   leg, and the in-app editor keeps it. Weeks 1–4 were backfilled from the repo's history (Week 1 from the Sept 14
   snapshot, the earliest). `fvAt(leg, team, data)` returns the frozen value for a locked leg, else `fvFor`, and the
   popularity model and the past-week board use it, so later ratings moves cannot rewrite what the field saw.
+- **Splash anchor**: when the current week has a Thursday reading, `splashAnchor` maps each Thursday team's share
+  through share^γ ÷ Z (γ = `mapping.gamma` 1.2, Z = mean Σ share^γ over complete Splash weeks) and `applyAnchor`
+  pins those shares in `modelPick`, the forward field and the band draws (jittered by `ANCHOR_ERR` 0.06 log SD),
+  scaling every other team to fill the rest. A Thursday `final` sets that game's win chance to 0/1 for EV, the
+  DILI map and the bands; the W% cell reads won/lost. Off for any week with Circa actuals.
 - Before lock the P% cell shows the model's estimate and the P%, EV and DILI tooltips show a band: `modelPickRange` jiggles every posted win chance by `LINE_MOVE` =
   0.6 pts of spread (Tue→Sat movement measured across Weeks 2–4) scaled by sqrt(days to lock ÷ 4), re-runs the
   model 96 times with a fixed seed, also jiggling each team's score by the model's own error, re-measured by

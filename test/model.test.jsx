@@ -1,9 +1,10 @@
 // Field timeline + popularity model on the real data files.
-import { buildData, fieldTimeline, modelPick, modelPickRange, fitParams, availability, fvAt } from "../src/CircaSurvivorPlanner.jsx";
+import { buildData, fieldTimeline, modelPick, modelPickRange, fitParams, availability, fvAt, splashAnchor, computeEV } from "../src/CircaSurvivorPlanner.jsx";
 import { OPP } from "../src/schedule.js";
 import picks from "../data/picks.json";
 import actuals from "../data/actuals.json";
 import odds from "../data/odds.json";
+import splash from "../data/splash.json";
 import ratings from "../data/ratings.json";
 let fails = 0; const ok = (name, cond, extra = "") => { console.log(name + ":", cond ? "OK" : "FAIL", extra); if (!cond) fails++; };
 
@@ -42,6 +43,21 @@ ok("fitParams returns a,b", Number.isFinite(params.a) && Number.isFinite(params.
   ok("a locked week's model P% ignores today's ratings", Object.keys(a).every((tm) => Math.abs(a[tm] - f[tm]) < 1e-12), `${id}: frozen fv ${fvAt(id, "BAL", data)} vs live ${fvAt(id, "BAL", flat)}`);
   ok("an open week still uses the live projection", (() => { const open = Object.keys(OPP).find((x) => !actuals.legs[x]); return open ? fvAt(open, "BAL", data) !== fvAt(open, "BAL", flat) : true; })());
   ok("the fit reports its measured band errors", params.errTop >= 0.05 && params.errTop <= 0.6 && params.errOther >= 0.05 && params.errOther <= 0.6 && params.errTop < params.errOther && params.nTop === locked.length, `top ${params.errTop} (${params.nTop}) others ${params.errOther} (${params.nOther})`);
+})();
+// Splash: the Thursday reading pins the Thursday teams and scales the rest; a final decides the game
+(() => {
+  const open = Object.keys(OPP).find((id) => !actuals.legs[id]);
+  const fake = { mapping: { gamma: 1.2 }, weeks: { ...splash.weeks, [open]: { thursday: { alive: 5000, picks: { [Object.keys(OPP[open])[0]]: 1900 }, final: { [Object.keys(OPP[open])[0]]: "L" } } } } };
+  const T = Object.keys(OPP[open])[0];
+  const d = buildData({ picks, actuals, odds, ratings, splash: fake }), an = splashAnchor(open, d);
+  ok("anchor maps the Thursday share through the power rule", an && Math.abs(an.shares[T] - Math.pow(0.38, 1.2) / an.Z) < 1e-9 && an.Z > 0.6 && an.Z < 0.85, `38% → ${(100 * an.shares[T]).toFixed(1)}% with Z ${an.Z.toFixed(3)}`);
+  const plain = modelPick(open, data, params), pinned = modelPick(open, d, params);
+  const sum = Object.values(pinned).reduce((a, b) => a + b, 0);
+  ok("pinned share sticks and the rest still sums to one", Math.abs(pinned[T] - an.shares[T]) < 1e-9 && Math.abs(sum - 1) < 1e-9);
+  const other = Object.keys(plain).filter((x) => x !== T && plain[x] > 0.01);
+  ok("other teams keep their proportions", other.every((x) => Math.abs(pinned[x] / plain[x] - pinned[other[0]] / plain[other[0]]) < 1e-9));
+  ok("a locked week ignores the anchor", splashAnchor("W1", buildData({ picks, actuals, odds, ratings, splash: { weeks: { W1: { thursday: { alive: 10, picks: { JAX: 5 } } } } } })) === null);
+  ok("Splash's own Z is in a sane range on the real file", (() => { const z = splashAnchor("W5", buildData({ picks, actuals, odds, ratings, splash }))?.Z; return z == null || (z > 0.6 && z < 0.85); })());
 })();
 // P% band: the model re-run over typical line movement; stable, brackets the point estimate, sane width
 (() => {

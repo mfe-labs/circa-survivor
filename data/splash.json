@@ -1,0 +1,140 @@
+{
+ "source": "Splash x Polymarket Survivor World Championship ($1,000, ~22,700 entries). Stats tab, transcribed from Jeremy's screenshots. picks = entries on each team; survived/eliminated from the week header (missed picks count inside eliminated). thursday = the reading right after the Thursday game kicks off; final = that game's result (W/L).",
+ "mapping": {
+  "gamma": 1.2,
+  "note": "Circa share ≈ Splash share^gamma ÷ Z, Z = mean over complete weeks of Σ share^gamma; fitted on Weeks 1–4 (28 team-weeks ≥1% in both)"
+ },
+ "weeks": {
+  "W1": {
+   "survived": 15657,
+   "eliminated": 5182,
+   "missed": 3,
+   "picks": {
+    "JAX": 5497,
+    "LAC": 4488,
+    "PIT": 4307,
+    "DET": 1552,
+    "LV": 1490,
+    "PHI": 1107,
+    "CIN": 566,
+    "DAL": 370,
+    "CHI": 323,
+    "BAL": 268,
+    "TEN": 225,
+    "KC": 196,
+    "MIN": 176,
+    "NYJ": 139,
+    "MIA": 47,
+    "BUF": 30,
+    "CAR": 7,
+    "GB": 7,
+    "ATL": 6,
+    "DEN": 6,
+    "HOU": 5,
+    "IND": 5,
+    "TB": 5,
+    "NYG": 4,
+    "CLE": 3,
+    "NO": 3,
+    "ARI": 2,
+    "WAS": 2
+   }
+  },
+  "W2": {
+   "survived": 7953,
+   "eliminated": 7704,
+   "missed": 87,
+   "picks": {
+    "SF": 5522,
+    "TB": 4583,
+    "LAC": 2102,
+    "PHI": 1266,
+    "BAL": 815,
+    "KC": 281,
+    "LAR": 246,
+    "DAL": 207,
+    "CAR": 158,
+    "NE": 144,
+    "CHI": 102,
+    "SEA": 41,
+    "BUF": 38,
+    "GB": 36,
+    "DEN": 13,
+    "ATL": 9,
+    "HOU": 5,
+    "CLE": 1,
+    "ARI": 1
+   }
+  },
+  "W3": {
+   "survived": 5601,
+   "eliminated": 2352,
+   "missed": 8,
+   "picks": {
+    "KC": 3296,
+    "BUF": 940,
+    "SEA": 928,
+    "GB": 638,
+    "DET": 626,
+    "SF": 442,
+    "NO": 417,
+    "NYG": 201,
+    "CAR": 145,
+    "PHI": 125,
+    "CIN": 72,
+    "JAX": 49,
+    "BAL": 31,
+    "TB": 11,
+    "CLE": 9,
+    "TEN": 6,
+    "MIN": 2,
+    "ATL": 2,
+    "LV": 1,
+    "IND": 1,
+    "DEN": 1,
+    "HOU": 1,
+    "NYJ": 1
+   }
+  },
+  "W4": {
+   "survived": 5078,
+   "eliminated": 523,
+   "missed": 49,
+   "picks": {
+    "MIN": 2202,
+    "BAL": 1887,
+    "SEA": 375,
+    "IND": 349,
+    "BUF": 261,
+    "ARI": 123,
+    "GB": 111,
+    "CHI": 106,
+    "PIT": 33,
+    "KC": 33,
+    "DET": 26,
+    "NO": 22,
+    "HOU": 8,
+    "LAR": 7,
+    "ATL": 3,
+    "CLE": 3,
+    "NYG": 1,
+    "SF": 1,
+    "CIN": 1
+   }
+  },
+  "W5": {
+   "thursday": {
+    "asOf": "2026-10-09T04:08:00Z",
+    "alive": 5082,
+    "picks": {
+     "DAL": 1921,
+     "TB": 0
+    },
+    "final": {
+     "DAL": "L",
+     "TB": "W"
+    }
+   }
+  }
+ }
+}
