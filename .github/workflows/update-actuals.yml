@@ -6,6 +6,14 @@ on:
     # 15:41, which is exactly when Monday Night Football finishes, so the last result of a week sat
     # unrecorded for half a day. The job exits in seconds when there is nothing new.
     - cron: "41 */3 * * *"
+    # Saturday evening Pacific, when Circa posts the Selections PDF (their card is tweeted 6:18-6:22 pm PT, so the
+    # PDF is up by about 6). Cron is UTC, so these are Sunday UTC: 6:01, 6:17, 7:01, 7:17, 8:01 pm PDT, which also
+    # cover 5:01-7:01 pm PST once the clocks change in November. The job exits in seconds when nothing is new.
+    - cron: "1 1 * * 0"
+    - cron: "17 1 * * 0"
+    - cron: "1 2 * * 0"
+    - cron: "17 2 * * 0"
+    - cron: "1 3 * * 0"
   workflow_dispatch:
 
 permissions:
