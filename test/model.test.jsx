@@ -53,7 +53,9 @@ ok("fitParams returns a,b", Number.isFinite(params.a) && Number.isFinite(params.
   ok("anchor maps the Thursday share through the power rule", an && Math.abs(an.shares[T] - Math.pow(0.38, 1.2) / an.Z) < 1e-9 && an.Z > 0.6 && an.Z < 0.85, `38% → ${(100 * an.shares[T]).toFixed(1)}% with Z ${an.Z.toFixed(3)}`);
   const plain = modelPick(open, data, params), pinned = modelPick(open, d, params);
   const sum = Object.values(pinned).reduce((a, b) => a + b, 0);
-  ok("pinned share sticks and the rest still sums to one", Math.abs(pinned[T] - an.shares[T]) < 1e-9 && Math.abs(sum - 1) < 1e-9);
+  const lo = Math.min(an.shares[T], Math.max(plain[T] || 0, 0.0005)), hi = Math.max(an.shares[T], Math.max(plain[T] || 0, 0.0005));
+  ok("blended share sits between the model and the mapping, and the rest still sums to one", pinned[T] >= lo - 1e-9 && pinned[T] <= hi + 1e-9 && Math.abs(sum - 1) < 1e-9, `model ${(100 * (plain[T] || 0)).toFixed(1)} mapped ${(100 * an.shares[T]).toFixed(1)} blended ${(100 * pinned[T]).toFixed(1)}`);
+  ok("mapping error is measured from the complete weeks", an.err.nTop >= 4 && an.err.top > 0.03 && an.err.top < 0.3 && an.err.other > an.err.top, `top ${an.err.top.toFixed(3)} (${an.err.nTop}) other ${an.err.other.toFixed(3)} (${an.err.nOther})`);
   const other = Object.keys(plain).filter((x) => x !== T && plain[x] > 0.01);
   ok("other teams keep their proportions", other.every((x) => Math.abs(pinned[x] / plain[x] - pinned[other[0]] / plain[other[0]]) < 1e-9));
   ok("a locked week ignores the anchor", splashAnchor("W1", buildData({ picks, actuals, odds, ratings, splash: { weeks: { W1: { thursday: { alive: 10, picks: { JAX: 5 } } } } } })) === null);
