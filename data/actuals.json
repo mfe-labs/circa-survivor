@@ -398,7 +398,7 @@
    "fvAt": "2026-10-03T18:00:00.950Z"
   },
   "W5": {
-   "asOf": "Oct 10 (24 pending)",
+   "asOf": "Oct 11 (23 pending)",
    "picks": {
     "DAL": 2554,
     "HOU": 1228,
@@ -427,7 +427,9 @@
     "BAL": 2,
     "NOPICK": 3
    },
-   "won": [],
+   "won": [
+    "JAX"
+   ],
    "lost": [
     "DAL",
     "NOPICK"
@@ -435,7 +437,6 @@
    "pending": [
     "HOU",
     "CIN",
-    "JAX",
     "WAS",
     "NE",
     "ATL",
