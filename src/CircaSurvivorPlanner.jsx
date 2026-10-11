@@ -955,15 +955,21 @@ const CSS = `
 .csp .strip .v.sm { font-size:15px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; min-height:26px; }
 .csp .strip .v.sm .mut { color:var(--ink3); font-weight:500; }
 .csp .mapv .lede { font-size:12px; color:var(--ink2); line-height:1.5; max-width:84ch; margin:0 0 10px; }
-.csp .maptabs { display:flex; align-items:flex-end; gap:2px; margin:12px 0 0; border-bottom:1px solid var(--rule); }
-.csp .maptabs > button, .csp .maptabs > .tab { height:32px; line-height:32px; box-sizing:border-box; user-select:none; -webkit-user-select:none; padding:0 14px; font:inherit; font-size:13px; font-weight:500; color:var(--ink2); background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-1px; cursor:pointer; }
-.csp .maptabs > button:hover, .csp .maptabs > .tab:hover { color:var(--ink); }
+.csp .maptabs { display:flex; align-items:flex-end; gap:3px; margin:12px 0 0; padding:0 8px; border-bottom:1px solid var(--rule2); }
+.csp .maptabs > .tab { position:relative; box-sizing:border-box; height:32px; line-height:30px; margin-bottom:-1px; padding:0 14px; font:inherit; font-size:13px; font-weight:500; color:var(--ink2); background:var(--panel); border:1px solid var(--rule2); border-bottom:none; border-radius:7px 7px 0 0; cursor:pointer; user-select:none; -webkit-user-select:none; white-space:nowrap; }
+.csp .maptabs > .tab::before { content:""; position:absolute; left:9px; right:9px; top:0; height:3px; border-radius:0 0 2px 2px; background:var(--rule2); }
+.csp .maptabs > .tab.claude::before { background:#A9D6AE; }
+.csp .maptabs > .tab:hover { color:var(--ink); background:var(--surface); }
+.csp .maptabs > .tab.on { color:var(--ink); font-weight:600; background:var(--paper); box-shadow:0 1px 0 var(--paper); z-index:1; }
+.csp .maptabs > .tab.on::before { background:var(--ink3); }
+.csp .maptabs > .tab.claude.on::before { background:var(--green); }
 .csp .maptabs > .tab[draggable="true"] { cursor:grab; }
-.csp .maptabs > button.on, .csp .maptabs > .tab.on { color:var(--ink); border-bottom-color:var(--ink); font-weight:600; }
-.csp .maptabs > button.add { font-size:17px; font-weight:400; padding:0 12px; color:var(--ink3); }
+.csp .maptabs > .tab.add { padding:0 11px; font-size:17px; font-weight:400; color:var(--ink3); background:none; border-color:transparent; }
+.csp .maptabs > .tab.add::before { display:none; }
+.csp .maptabs > .tab.add:hover { color:var(--ink); background:var(--panel); border-color:var(--rule2); }
 .csp .maptabs > .tab.drag { opacity:.4; }
-.csp .maptabs > .tab.ins-l { box-shadow:-2px 0 0 var(--ink); }
-.csp .maptabs > .tab.ins-r { box-shadow:2px 0 0 var(--ink); }
+.csp .maptabs > .tab.ins-l { box-shadow:-3px 0 0 var(--ink); }
+.csp .maptabs > .tab.ins-r { box-shadow:3px 0 0 var(--ink); }
 .csp .maptabs .tabact { margin-left:auto; display:flex; gap:6px; align-self:center; }
 .csp .strip .v.bad { color:var(--red); }
 .csp .maptab .pc { display:inline-flex; align-items:center; height:22px; vertical-align:middle; }
@@ -1084,7 +1090,7 @@ const CSS = `
   .csp .act { padding:4px 12px 20px; }
   .csp .maptabs { overflow-x:auto; flex-wrap:nowrap; scrollbar-width:none; }
   .csp .maptabs::-webkit-scrollbar { display:none; }
-  .csp .maptabs > button, .csp .maptabs > .tab { flex:none; padding:0 10px; }
+  .csp .maptabs > .tab { flex:none; padding:0 10px; }
   .csp .maptabs .tabact { margin-left:12px; flex:none; }
   .csp .strip { margin:8px 0 12px; gap:8px 0; }
   .csp .strip .fig { flex:1 1 42%; border-right:none; margin-right:0; padding:4px 12px 4px 0; }
@@ -1797,12 +1803,12 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
   return (
     <div className={"act mapv" + (rh < 34 ? " tight" : "")} ref={boxRef} style={{ "--mrh": rh + "px" }}>
       <div className="maptabs">
-        <button className={tab === "dili" ? "on" : ""} onClick={() => setTab("dili")} title="The Planner's pick each week, applied forward as if nothing changes">Claude's DILI Map</button>
-        <button className={tab === "96" ? "on" : ""} onClick={() => setTab("96")} title="The plan the 96 jiggled seasons agree on">Claude's 96 Map</button>
+        <div role="button" tabIndex={0} className={"tab claude" + (tab === "dili" ? " on" : "")} onClick={() => setTab("dili")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("dili"); } }} title="The Planner's pick each week, applied forward as if nothing changes">Claude's DILI Map</div>
+        <div role="button" tabIndex={0} className={"tab claude" + (tab === "96" ? " on" : "")} onClick={() => setTab("96")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("96"); } }} title="The plan the 96 jiggled seasons agree on">Claude's 96 Map</div>
         {maps.map((m) => <div key={m.id} role="button" tabIndex={0} className={"tab" + (custom?.id === m.id ? " on" : "") + (drag === m.id ? " drag" : "") + (over?.id === m.id && drag !== m.id ? (over.after ? " ins-r" : " ins-l") : "")} onClick={() => setTab(m.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab(m.id); } }}
           draggable={canEdit} onDragStart={(e) => { e.dataTransfer.setData("text/plain", m.id); e.dataTransfer.effectAllowed = "move"; setDrag(m.id); }} onDragEnter={(e) => e.preventDefault()} onDragOver={(e) => dropAt(e, m)} onDrop={(e) => { e.preventDefault(); drop(); }} onDragEnd={drop}
           title={canEdit && maps.length > 1 ? "Drag to reorder" : undefined}>{m.name}</div>)}
-        {canEdit && <button className="add" onClick={create} title="New map, starting from Claude's DILI Map">+</button>}
+        {canEdit && <div role="button" tabIndex={0} className="tab add" onClick={create} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); create(); } }} title="New map, starting from Claude's DILI Map">+</div>}
         {custom && canEdit && <span className="tabact"><button className="link" onClick={rename}>Rename</button><button className="link" onClick={remove}>Delete</button></span>}
       </div>
       <div className="strip">
