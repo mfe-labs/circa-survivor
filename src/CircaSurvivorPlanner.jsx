@@ -490,6 +490,11 @@ export function planMap(data, picks, params = PRIOR) {
 // current week scores on EV; later weeks score on win chance ÷ forfeit, because the projected crowds further out
 // are too lopsided to trust (they ranked a 29% NYG third in Week 7). Weeks already planned are left out of each
 // later forfeit's map.
+// Claude Locks: the weeks where the DILI Map and the 96 Map name the same team; every other week is left empty.
+export function locksPicks(dili, cons) {
+  const by96 = Object.fromEntries(cons.plan.map((p) => [p.leg.id, p.team]));
+  return Object.fromEntries(dili.plan.filter((p) => p.team && by96[p.leg.id] === p.team).map((p) => [p.leg.id, p.team]));
+}
 export function diliPlan(data, picks, params = PRIOR) {
   const tab = seasonTable(data, params);
   const burned = spentTeams(data, picks), skip = new Set(), plan = [];
@@ -1019,6 +1024,7 @@ const CSS = `
 .csp .maptab tr.cur td:first-child { box-shadow:inset 3px 0 0 var(--sel); }
 .csp .maptab tr.hol td:first-child { color:var(--sand-ink); font-weight:600; }
 .csp .maptab tr.dead td { color:var(--red); }
+.csp .maptab tr.open td { color:var(--ink3); }
 .csp .strip .k { font-size:12px; color:var(--ink2); margin-top:3px; }
 .csp .strip .actions { display:flex; flex-direction:column; gap:6px; justify-content:center; margin-left:auto; }
 .csp .legcard { border:1px solid var(--rule); border-radius:10px; margin-bottom:16px; overflow:hidden; }
@@ -1102,12 +1108,17 @@ const CSS = `
   .csp .dist.maptab, .csp .dist.maptab tbody { display:block; width:100%; }
   .csp .dist.maptab thead { display:none; }
   .csp .dist.maptab tr { display:grid; grid-template-columns:84px 76px minmax(0,1fr) 38px 46px; align-items:center; column-gap:6px; row-gap:3px; padding:7px 4px 7px 8px; border-bottom:1px solid var(--rule); }
+  .csp .dist.maptab tbody tr { height:auto; }   /* rows grow with their two lines; the desktop row height would stack them */
   .csp .dist.maptab td, .csp .dist.maptab td:first-child { display:block; height:auto; padding:0; border:none; text-align:left; white-space:nowrap; font-size:12px; background:none; box-shadow:none; }
   .csp .dist.maptab td:empty { display:none; }
   .csp .dist.maptab td.bk { grid-column:1 / 3; color:var(--ink3); }
   .csp .dist.maptab td.bk::before { content:"backup "; font-size:11px; }
   .csp .dist.maptab td.why { grid-column:1 / -1; min-width:0; white-space:normal; line-height:1.4; font-size:11.5px; }
   .csp .dist.maptab td.bk + td.why { grid-column:3 / -1; }
+  .csp .dist.maptab td.dm::before { content:"DILI "; }
+  .csp .dist.maptab td.cm { grid-column:3 / 5; }
+  .csp .dist.maptab td.cm::before { content:"96 "; }
+  .csp .dist.maptab td.cm + td.why { grid-column:1 / -1; }
   .csp .maptab tr.cur { background:var(--sel-bg); box-shadow:inset 3px 0 0 var(--sel); }
   .csp .maptab tr.conflict { box-shadow:inset 3px 0 0 var(--red); }
   .csp .maptab tr.cur.conflict { box-shadow:inset 3px 0 0 var(--red); }
@@ -1753,6 +1764,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
   };
   const custom = maps.find((m) => m.id === tab) || null;
   const cs = useMemo(() => (custom ? customSummary(data, entry, custom, dili) : null), [data, entry, custom, dili]);
+  const locks = useMemo(() => { const lk = customSummary(data, entry, { picks: locksPicks(dili, cons) }, dili), filled = lk.rows.filter((r) => r.team && r.win != null); return { ...lk, filled: filled.length, winOut: filled.reduce((x, r) => x * r.win, 1) }; }, [data, entry, dili, cons]);
   if (status && !status.alive) return <div className="act mapv"><p className="lede">{entry.name} is out ({legLabel(status.leg)}). Nothing left to map.</p></div>;
   const res = tab === "96" ? cons : dili;
   const planned = Object.fromEntries(res.plan.map((p) => [p.leg.id, p]));
@@ -1780,6 +1792,10 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
     ? { winOut: cs.winOut, winNote: cs.winNote, weakest: cs.weakest, cheapLeg: cs.now,
         cheap: cs.cheap.map((f) => <span key={f.team} title={`${f.team} is ${pct0(f.win)} to win this week and is not used later in this map`}>{teamChip(f.team, true)} <span className="mut">({pct0(f.win)})</span></span>),
         cheapCap: (lg) => `free to burn in ${lg} under this map: favorites (win %) it does not use later` }
+    : tab === "locks"
+    ? { winOut: locks.winOut, winCap: `chance of winning the ${locks.filled} locked week${locks.filled === 1 ? "" : "s"}`, weakest: locks.weakest, cheapLeg: locks.now,
+        cheap: locks.cheap.map((f) => <span key={f.team} title={`${f.team} is ${pct0(f.win)} to win this week and is not locked for a later week`}>{teamChip(f.team, true)} <span className="mut">({pct0(f.win)})</span></span>),
+        cheapCap: (lg) => `free to burn in ${lg}: favorites (win %) not locked for a later week` }
     : tab === "96"
     ? { winOut: cons.winOut, weakest: cons.weakest, cheapLeg: cons.nowLeg,
         cheap: cons.free.map((f) => <span key={f.team} title={`${f.team} is ${pct0(f.win)} to win this week and gets used in a later week in ${Math.round(100 * f.onMap)}% of the ${cons.samples} seasons`}>{teamChip(f.team, true)} <span className="mut">({pct0(f.win)})</span> {pct0(f.onMap)}</span>),
@@ -1805,6 +1821,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
       <div className="maptabs" onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOver(null); }}>
         <div role="button" tabIndex={0} className={"tab claude" + (tab === "dili" ? " on" : "")} onClick={() => setTab("dili")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("dili"); } }} title="The Planner's pick each week, applied forward as if nothing changes">Claude's DILI Map</div>
         <div role="button" tabIndex={0} className={"tab claude" + (tab === "96" ? " on" : "")} onClick={() => setTab("96")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("96"); } }} title="The plan the 96 jiggled seasons agree on">Claude's 96 Map</div>
+        <div role="button" tabIndex={0} className={"tab claude" + (tab === "locks" ? " on" : "")} onClick={() => setTab("locks")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("locks"); } }} title="The weeks where both Claude maps name the same team; the rest left empty">Claude Locks</div>
         {maps.map((m) => <div key={m.id} role="button" tabIndex={0} className={"tab" + (custom?.id === m.id ? " on" : "") + (drag === m.id ? " drag" : "") + (over?.id === m.id && drag !== m.id ? (over.after ? " ins-r" : " ins-l") : "")} onClick={() => setTab(m.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab(m.id); } }}
           draggable={canEdit} onDragStart={(e) => { e.dataTransfer.setData("text/plain", m.id); e.dataTransfer.effectAllowed = "move"; setDrag(m.id); }} onDragEnter={(e) => e.preventDefault()} onDragOver={(e) => dropAt(e, m)} onDrop={(e) => { e.preventDefault(); drop(); }} onDragEnd={() => { setDrag(null); setOver(null); }}
           title={canEdit && maps.length > 1 ? "Drag to reorder" : undefined}>{m.name}</div>)}
@@ -1812,13 +1829,15 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
         {custom && canEdit && <span className="tabact"><button className="link" onClick={rename}>Rename</button><button className="link" onClick={remove}>Delete</button></span>}
       </div>
       <div className="strip">
-        <div className="fig"><div className={"v" + (box.winOut == null && box.winNote ? " bad" : "")}>{box.winOut != null ? (100 * box.winOut).toFixed(1) + "%" : box.winNote ? "not valid" : "–"}</div><div className="k">{box.winOut == null && box.winNote ? box.winNote : "chance of winning every week on this map"}</div></div>
+        <div className="fig"><div className={"v" + (box.winOut == null && box.winNote ? " bad" : "")}>{box.winOut != null ? (100 * box.winOut).toFixed(1) + "%" : box.winNote ? "not valid" : "–"}</div><div className="k">{box.winOut == null && box.winNote ? box.winNote : box.winCap || "chance of winning every week on this map"}</div></div>
         <div className="fig"><div className="v sm">{box.weakest.map((p) => <span key={p.leg.id}>{shortLeg(p.leg)} {pct0(p.win)}</span>)}</div><div className="k">weakest weeks, where the entry most likely dies</div></div>
         {box.cheapLeg && <div className="fig"><div className="v sm">{box.cheap.length ? box.cheap : "none"}</div><div className="k">{box.cheapCap(legLabel(box.cheapLeg))}</div></div>}
       </div>
       <table className="dist maptab">
         <thead>{custom
           ? <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th></th><th></th><th>Notes</th></tr>
+          : tab === "locks"
+          ? <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title="What Claude's DILI Map has for this week">DILI Map</th><th title="What Claude's 96 Map has for this week">96 Map</th><th>Notes</th></tr>
           : tab === "96"
           ? <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title={`How many of ${cons.samples} jiggled seasons put this team here`}>Held</th><th title="Runner-up by count, not used elsewhere on this map">Backup</th><th>Why</th></tr>
           : <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title="DILI for that week, scored as the Planner scores it">DILI</th><th title="Second-best DILI that week">Backup</th><th>Why</th></tr>}</thead>
@@ -1828,6 +1847,21 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
             if (data.actuals[l.id] && !p) return pastRow(l);
             if (!p) return null;
             const cls = (l.holiday ? "hol" : "") + (l.id === nowId ? " cur" : "");
+            if (tab === "locks") {
+              const r = locks.rows.find((x) => x.leg.id === l.id), d = p, c = cons.plan.find((x) => x.leg.id === l.id);
+              const note = r.team ? (r.win != null && r.win < 0.6 ? "Both maps agree, but it is a coin flip." : "Both maps agree.") : "The maps disagree, so nothing is locked.";
+              return (
+                <tr key={l.id} className={cls + (r.team ? "" : " open")}>
+                  <td>{legLabel(l)}</td>
+                  <td><span className="pc">{r.team ? teamChip(r.team) : "–"}</span></td>
+                  <td>{r.team ? gameText(l.id, r.team, data) : ""}</td>
+                  <td className={r.win != null && r.win < 0.6 ? "weak" : ""}>{pct0(r.win)}</td>
+                  <td className="bk dm">{d?.team ? <>{teamChip(d.team, true)} <span className="mut">{pct0(d.win)}</span></> : "–"}</td>
+                  <td className="bk cm">{c?.team ? <>{teamChip(c.team, true)} <span className="mut">{pct0(c.win)}</span></> : "–"}</td>
+                  <td className="why" title={note}>{note}</td>
+                </tr>
+              );
+            }
             if (custom) {
               const r = cs.rows.find((x) => x.leg.id === l.id);
               const note = !r.team ? "No pick yet." : r.spent ? `Conflict: already used in ${legLabel(r.spent)}.` : r.also.length ? `Conflict: also in ${r.also.map(legLabel).join(", ")}.` : r.win != null && r.win < 0.6 ? "Coin-flip week." : "";

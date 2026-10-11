@@ -128,6 +128,8 @@ fetch fails, last season's market ratings regressed 40% toward average are the f
 - `consensusPlan(data, picks, params)` is Claude's 96 Map: the one assignment (hungarian) over `planMap().byLeg`
   counts with the highest total agreement, win chance breaking ties; backup = best team still free that week by the
   same score.
+- `locksPicks(dili, cons)` is Claude Locks: the weeks where both maps name the same team; shown through
+  `customSummary` like a saved map, read-only.
 - `planMap(data, picks, params)` is the single-solve map underneath (also used by DILI's tooltips): the projected map, per-leg first-choice counts across the 96
   draws, the backup (what fills the leg after burning the pick) and cost, field ownership for near legs, the
   chance of winning out, the three weakest legs, and the three favorites (55%+) in the current leg used least often in
