@@ -321,11 +321,11 @@ function projectField(legId, data, params) {
 }
 // Everything the map solver needs, for every leg not yet locked, per team: win chance as a z-score, how much
 // noise to add for how far off the leg is, the field-aware EV adjustment (log EV − log win, near legs only),
-// and the shared noise draws. "Now" is the first week that is not completely over (openLeg), so a week stays in
-// the plan until its last game is final. Built once per data snapshot.
+// and the shared noise draws. "Now" is the first week Circa has not published picks for (lockedIdx), so a week
+// leaves the plan the moment its picks are in. Built once per data snapshot.
 function seasonTable(data, params) {
   return cached(data, "st", `${params.a}|${params.b}`, () => {
-    const n = ALL_TEAMS.length, nowIdx = LEGS.findIndex((l) => l.id === openLeg(data.actuals));
+    const n = ALL_TEAMS.length, nowIdx = lockedIdx(data);
     const near = nowIdx < LEGS.length ? projectField(LEGS[nowIdx].id, data, params) : {};
     const z = LEGS.map(() => new Float64Array(n).fill(NaN)), sd = LEGS.map(() => new Float64Array(n)), ff = LEGS.map(() => new Float64Array(n));
     LEGS.forEach((l, k) => {
@@ -339,13 +339,15 @@ function seasonTable(data, params) {
     return { z, sd, ff, eps, nowIdx, near };
   });
 }
-// The legs an entry's map has to fill: every week not completely over, except the one being scored. Picks
-// entered for those weeks are soft (Circa does not lock until Saturday and the week is not decided until its
-// last game), so they neither fix a week nor spend a team; only picks in finished weeks are spent.
+// The legs an entry's map has to fill: every week Circa has not yet published picks for, except the one being
+// scored. A week is locked for planning the moment Circa's Selections PDF is in (Saturday evening), even while
+// its games are still being played; until then a pick entered for it is soft (Circa does not lock until
+// Saturday), so it neither fixes the week nor spends the team. The Planner keeps showing a locked week until
+// its last game ends; the maps move on to the next week and treat the locked week's pick as spent.
+const lockedIdx = (data) => { const i = LEGS.findIndex((l) => !data.actuals?.[l.id]); return i < 0 ? LEGS.length : i; };
 const mapLegs = (tab, except, skip = null) => LEGS.map((l, k) => k).filter((k) => k >= tab.nowIdx && LEGS[k].id !== except && !skip?.has(LEGS[k].id));
 export function spentTeams(data, picks) {
-  const nowIdx = LEGS.findIndex((l) => l.id === openLeg(data.actuals));
-  return new Set(LEGS.slice(0, nowIdx).map((l) => picks?.[l.id]).filter(Boolean));
+  return new Set(LEGS.slice(0, lockedIdx(data)).map((l) => picks?.[l.id]).filter(Boolean));
 }
 // Minimum-cost assignment of rows (legs) to columns (teams), rows ≤ columns. Returns the column for each row.
 function hungarian(cost) {
@@ -1334,8 +1336,12 @@ export default function CircaSurvivorPlanner() {
       if (k === "ev" || k === "wp" || k === "pp" || k === "fv" || k === "dili") { const v = { ev: stats[t].ev, wp: stats[t].win, pp: stats[t].pick, fv: stats[t].fv, dili: stats[t].dili }[k]; return v == null ? -Infinity : v; }
       const ln = lineFor(k, t, data); return ln && ln.spread != null ? -ln.spread : -Infinity; // favorites first
     };
-    return [...ALL_TEAMS].sort((a, b) => { const va = val(a), vb = val(b); if (va === vb) return a < b ? -1 : 1; return (va < vb ? 1 : -1) * d; });
-  }, [sort, stats, data]);
+    // on the number columns, rows without a number sort below the numbers in a fixed order: decided games, then
+    // teams with no game this week, then teams this entry has already used
+    const numeric = ["ev", "wp", "pp", "fv", "dili"].includes(k);
+    const tier = (t) => { if (!numeric) return 0; if (!OPP[legId][t]) return 2; if (usedBy[t] && usedBy[t] !== legId) return 3; if (stats[t].final) return 1; return 0; };
+    return [...ALL_TEAMS].sort((a, b) => { const ta = tier(a), tb = tier(b); if (ta !== tb) return ta - tb; const va = val(a), vb = val(b); if (va === vb) return a < b ? -1 : 1; return (va < vb ? 1 : -1) * d; });
+  }, [sort, stats, data, legId, usedBy]);
 
   // stretch the week columns (and the Future column absorbs the remainder) so the board fills its container
   const wrapRef = useRef(null);
@@ -1497,14 +1503,14 @@ export default function CircaSurvivorPlanner() {
               const pr = (v) => Math.round(100 * v);
               return (
                 <tr key={team} className={usedLeg && usedLeg !== legId ? "gone" : ""}>
-                  <td className={"L wp num" + (st.win == null ? " blank" : st.final ? " fin" : st.winTop ? " hi" : "") + (st.status === "single" || st.status === "degraded" ? " weak" : "")} title={inLeg ? (st.win == null ? "No two-sided moneyline posted yet for this game" : `${pct(st.win)} — ${STATUS_TEXT[st.status]}${st.status !== "closing" ? ` (${st.n})` : ""} · e.g. ${st.refBook} ${fmtSp(st.ml)} / ${fmtSp(st.oppMl)}${st.dWin != null ? dTip("was", pct(st.win - st.dWin)) : ""}`) : ""}><Num d={st.final ? null : st.dWin} kind="pct">{inLeg ? (st.final ? (st.final === "W" ? "won" : "lost") : pct(st.win)) : ""}</Num></td>
-                  <td className={"L pp num" + (st.pick == null ? " blank" : st.pick > 0.099 ? " warn" : "")} title={inLeg ? (st.act ? "Circa actual" : st.anchor != null ? `Splash Thursday reading: ${pctP(st.anchorRaw)} of ${st.anchorAlive.toLocaleString()} entries → ${pctP(st.anchorMap)} by the mapping (Circa ≈ Splash^1.2), blended ${Math.round(100 * st.anchorW)}/${Math.round(100 * (1 - st.anchorW))} with the model's ${pctP(st.pm)} → ${pctP(st.anchor)}` : `field model ${pctP(st.pm)}${st.pLo != null ? ` · likely ${pr(st.pLo)}–${pr(st.pHi)} at lock (middle half of outcomes, given line movement and how far the model has missed so far)` : ""}${st.dPick != null ? dTip("was", pct(st.pick - st.dPick)) : ""}`) : ""}><Num d={st.dPick} kind={st.pick != null && st.pick < 0.0995 ? "pct1" : "pct"}>{inLeg ? pctP(st.pick) : ""}</Num></td>
+                  <td className={"L wp num" + (st.win == null ? " blank" : st.final ? " fin" : st.winTop ? " hi" : "") + (st.status === "single" || st.status === "degraded" ? " weak" : "")} title={inLeg ? (st.win == null ? "No two-sided moneyline posted yet for this game" : `${pct(st.win)} — ${STATUS_TEXT[st.status]}${st.status !== "closing" ? ` (${st.n})` : ""} · e.g. ${st.refBook} ${fmtSp(st.ml)} / ${fmtSp(st.oppMl)}${st.dWin != null ? dTip("was", pct(st.win - st.dWin)) : ""}`) : ""}><Num d={st.final ? null : st.dWin} kind="pct">{inLeg ? (st.final ? (st.final === "W" ? "100%" : "0%") : pct(st.win)) : "–"}</Num></td>
+                  <td className={"L pp num" + (st.pick == null ? " blank" : st.pick > 0.099 ? " warn" : "")} title={inLeg ? (st.act ? "Circa actual" : st.anchor != null ? `Splash Thursday reading: ${pctP(st.anchorRaw)} of ${st.anchorAlive.toLocaleString()} entries → ${pctP(st.anchorMap)} by the mapping (Circa ≈ Splash^1.2), blended ${Math.round(100 * st.anchorW)}/${Math.round(100 * (1 - st.anchorW))} with the model's ${pctP(st.pm)} → ${pctP(st.anchor)}` : `field model ${pctP(st.pm)}${st.pLo != null ? ` · likely ${pr(st.pLo)}–${pr(st.pHi)} at lock (middle half of outcomes, given line movement and how far the model has missed so far)` : ""}${st.dPick != null ? dTip("was", pct(st.pick - st.dPick)) : ""}`) : ""}><Num d={st.dPick} kind={st.pick != null && st.pick < 0.0995 ? "pct1" : "pct"}>{inLeg ? pctP(st.pick) : "–"}</Num></td>
                   <td className={"L fv num" + (st.fv == null ? " blank" : Math.round(st.fv * 10) / 10 <= 2 ? " hi" : "")} title={st.fv == null ? "No power ratings yet" : st.fvRaw != null ? `About ${st.fv.toFixed(1)} strong-favorite weeks left that this entry would use: ${st.fvRaw.toFixed(1)} for the team on its own, ${st.fvEntry.toFixed(1)} counted against the teams you still hold, blended ${Math.round(100 * st.fvW)}/${Math.round(100 * (1 - st.fvW))}${st.forfeit != null && Number.isFinite(st.forfeit) ? ` · costs this entry ${Math.round(100 * (st.forfeit - 1))}% to spend` : ""}` : `About ${st.fv.toFixed(1)} strong-favorite weeks left after this one (a 75% spot counts ~1, 65% counts ½, 55% a little)`}>
                     <span className="v"><span className="n">{st.fv == null ? "–" : st.fv.toFixed(1)}</span></span>
                   </td>
-                  <td className={"L ev num" + (st.ev == null ? " blank" : st.evTop ? " hi" : "")} title={st.ev != null ? `EV ${st.ev.toFixed(2)}${st.evLo != null ? ` · likely ${st.evLo.toFixed(2)}–${st.evHi.toFixed(2)} at lock (middle half of outcomes)` : ""}${st.dEv != null ? dTip("was", (st.ev - st.dEv).toFixed(2)) : ""}` : ""}><Num d={st.dEv} kind="ev">{st.ev == null ? (inLeg ? "–" : "") : st.ev.toFixed(2)}</Num></td>
-                  <td className={"L dili num" + (st.dili == null ? " blank" : st.diliTop ? " hi" : "")} title={st.dili == null ? (inLeg ? (usedLeg ? "Already used" : "Needs an EV") : "") : diliTip(st)}>
-                    <Num d={st.dDili} kind="ev">{st.dili == null ? (inLeg ? "–" : "") : st.dili.toFixed(2)}</Num>
+                  <td className={"L ev num" + (st.ev == null ? " blank" : st.evTop ? " hi" : "")} title={st.ev != null ? `EV ${st.ev.toFixed(2)}${st.evLo != null ? ` · likely ${st.evLo.toFixed(2)}–${st.evHi.toFixed(2)} at lock (middle half of outcomes)` : ""}${st.dEv != null ? dTip("was", (st.ev - st.dEv).toFixed(2)) : ""}` : ""}><Num d={st.dEv} kind="ev">{st.ev == null ? "–" : st.ev.toFixed(2)}</Num></td>
+                  <td className={"L dili num" + (st.dili == null ? " blank" : st.diliTop ? " hi" : "")} title={st.dili == null ? (!inLeg ? "No game this week" : usedLeg && usedLeg !== legId ? `Already used in ${legLabel(LEGS.find((x) => x.id === usedLeg))}` : st.final ? "Game is over" : "Needs an EV") : diliTip(st)}>
+                    <Num d={st.dDili} kind="ev">{st.dili == null ? (!inLeg ? "no game" : usedLeg && usedLeg !== legId ? "used" : "–") : st.dili.toFixed(2)}</Num>
                   </td>
                   <td className="L team" style={{ "--tc": COLORS[team][0] }}>
                     <span className="nm">{team}</span>

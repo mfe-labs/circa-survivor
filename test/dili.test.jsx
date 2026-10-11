@@ -55,8 +55,8 @@ ok("locked weeks are not mapped", (() => { const d = lockedTo(3); const r = mk("
 const fin = (n, pend = []) => ({ ...data, actuals: Object.fromEntries(LEGS.slice(0, n).map((l, i) => [l.id, { picks: {}, won: [], lost: [], pending: i === n - 1 ? pend : [] }])) });
 // a week with games pending counts as current only until the next week starts, so pin the clock to Week 3
 const atWeek3 = (fn) => { const real = Date.now; Date.now = () => new Date("2026-09-26T12:00:00Z").getTime(); try { return fn(); } finally { Date.now = real; } };
-ok("only finished weeks spend a team", atWeek3(() => { const sp = spentTeams(fin(3, ["X"]), { W1: "KC", W2: "BUF", W3: "SF", W4: "PHI" }); return sp.has("KC") && sp.has("BUF") && !sp.has("SF") && !sp.has("PHI"); }));
-ok("a week still being played stays in the plan", atWeek3(() => { const pl = planMap(fin(3, ["X"]), { W1: "KC", W2: "BUF", W3: "SF", W4: "PHI" }, P); return pl.plan[0].leg.id === "W3" && pl.plan.every((p) => p.team !== "KC" && p.team !== "BUF") && pl.plan.some((p) => p.team === "SF"); }));
+ok("weeks with Circa's picks in spend a team, even with games pending", atWeek3(() => { const sp = spentTeams(fin(3, ["X"]), { W1: "KC", W2: "BUF", W3: "SF", W4: "PHI" }); return sp.has("KC") && sp.has("BUF") && sp.has("SF") && !sp.has("PHI"); }));
+ok("a week whose picks are in leaves the plan and its pick is spent", atWeek3(() => { const pl = planMap(fin(3, ["X"]), { W1: "KC", W2: "BUF", W3: "SF", W4: "PHI" }, P); return pl.plan[0].leg.id === "W4" && pl.plan.every((p) => !["KC", "BUF", "SF"].includes(p.team)) && pl.plan.some((p) => p.team === "PHI"); }));
 ok("viewing a later week still covers the open weeks before it", (() => { const m = computeDili("W6", mk("W6"), data, new Set(), P); return m.some((p) => p.leg.id === "W5") && !m.some((p) => p.leg.id === "W6"); })());
 // the Map tab's plan
 (() => {
@@ -119,7 +119,7 @@ ok("future value on a readable scale", fvFor("W2", "KC", data) < 18 && fvFor("W2
   const real = buildData({ picks, actuals, odds, ratings }), params = fitParams(real), e = picks.entries[0];
   const t0 = Date.now(); const dp = diliPlan(real, e.picks, params); const ms = Date.now() - t0;
   const cp = consensusPlan(real, e.picks, params);
-  const open = LEGS.filter((l) => !real.actuals[l.id] || real.actuals[l.id].pending?.length);
+  const open = LEGS.filter((l) => !real.actuals[l.id]);
   ok("DILI map fills every open week with distinct teams", dp.plan.length >= open.length && dp.plan.every((p) => p.team) && new Set(dp.plan.map((p) => p.team)).size === dp.plan.length, `${dp.plan.length} weeks, ${ms} ms`);
   ok("DILI map is quick enough", ms < 3000, `${ms} ms`);
   // its current week equals the Planner's top DILI

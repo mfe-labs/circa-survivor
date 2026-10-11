@@ -113,8 +113,10 @@ fetch fails, last season's market ratings regressed 40% toward average are the f
 - **Near legs**: the next `NEAR_LEGS` = 4 legs score each team by projected EV instead of win chance, from
   `projectField`, which steps the popularity model forward (field picks by the model, losers drop out, survivors
   stop holding what they picked). Further out the field model drifts, so plain win chance is used.
-- The map fills every leg from openLeg() on (the first week not completely over), except the leg being scored.
-  Picks in those weeks are soft: they neither spend a team nor fix a week (spentTeams = picks in finished weeks).
+- The map fills every leg from lockedIdx() on (the first week Circa has not published picks for), except the leg
+  being scored. A week locks for planning the moment its Selections PDF is in, even with games pending; before that
+  a pick entered for it is soft (spentTeams = picks in weeks with actuals). The Planner's selected week still follows
+  openLeg() (first week not completely over).
 - `diliPlan(data, picks, params)` is Claude's DILI Map: from the first open leg, build rows as the Planner does
   (market win + model shares for the current leg, forward-field shares for near legs, win chance alone beyond),
   `computeDili` with the already-planned legs skipped from the forfeit map, take the top, spend it, repeat. Also
