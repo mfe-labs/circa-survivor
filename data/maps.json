@@ -1,6 +1,28 @@
 {
  "maps": [
   {
+   "id": "mv42ctda",
+   "name": "Claude Locks",
+   "entry": "CIRCAmcised-2",
+   "picks": {
+    "W6": "NE",
+    "W7": "NYJ",
+    "W8": "CIN",
+    "W9": "SEA",
+    "W10": "IND",
+    "W11": "BUF",
+    "TG": "LAR",
+    "W12": "JAX",
+    "W13": "DEN",
+    "W14": "BAL",
+    "W15": "GB",
+    "XM": "CHI",
+    "W16": "LV",
+    "W17": "DAL",
+    "W18": "PHI"
+   }
+  },
+  {
    "id": "muoba7ob",
    "name": "Jeremy's Map",
    "entry": "CIRCAmcised-2",
@@ -60,28 +82,6 @@
     "W12": "JAX",
     "W13": "DEN",
     "W15": "GB"
-   }
-  },
-  {
-   "id": "mv42ctda",
-   "name": "Claude Locks",
-   "entry": "CIRCAmcised-2",
-   "picks": {
-    "W6": "NE",
-    "W7": "NYJ",
-    "W8": "CIN",
-    "W9": "SEA",
-    "W10": "IND",
-    "W11": "BUF",
-    "TG": "LAR",
-    "W12": "JAX",
-    "W13": "DEN",
-    "W14": "BAL",
-    "W15": "GB",
-    "XM": "CHI",
-    "W16": "LV",
-    "W17": "DAL",
-    "W18": "PHI"
    }
   }
  ]
