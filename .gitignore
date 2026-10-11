@@ -4,3 +4,5 @@ dist
 test/*.png
 test/*.cjs
 .DS_Store
+splash/
+user-discussion/
