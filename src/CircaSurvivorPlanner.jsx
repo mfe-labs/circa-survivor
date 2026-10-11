@@ -283,7 +283,7 @@ function holidayPressure(legId, team, data, av) {
 // choice in a distant week only half the time is charged about half. Same noise on every candidate.
 // The next few weeks use the team's projected EV rather than its win chance, from a forward run of the field
 // model, so a team most of the field is about to burn gets credit for the quiet spot it leaves you later.
-const NEAR_LEGS = 4;                        // legs ahead the field is projected for (DILI Map, Future column); the season solver trusts it for the current week only
+const NEAR_LEGS = 4;                        // legs ahead the field is projected for; only the current week's projection is ever scored on (see seasonTable)
 const MAP_SAMPLES = 96;                     // noisy seasons averaged per forfeit; fixed seed, so numbers are stable
 const MAP_FLOOR = 0.02;                     // "win chance" of a leg with nothing to pick: a forfeit, near-certain loss
 const MARGIN_SD = 13.5;                     // points of margin per unit of win-chance z
@@ -486,22 +486,22 @@ export function planMap(data, picks, params = PRIOR) {
 }
 // Claude's DILI Map: the Planner's rule applied week by week. Score the next open week exactly as the Planner
 // does (EV ÷ forfeit, with the strength half), take the top DILI, spend that team, move to the next week and
-// repeat to the end, as if nothing changes. The current week therefore always matches the Planner. The first
-// NEAR_LEGS weeks have a field model and score on EV; further out there is none, so those weeks score on win
-// chance ÷ forfeit. Weeks already planned are left out of each later forfeit's map.
+// repeat to the end, as if nothing changes. The current week therefore always matches the Planner. Only the
+// current week scores on EV; later weeks score on win chance ÷ forfeit, because the projected crowds further out
+// are too lopsided to trust (they ranked a 29% NYG third in Week 7). Weeks already planned are left out of each
+// later forfeit's map.
 export function diliPlan(data, picks, params = PRIOR) {
   const tab = seasonTable(data, params);
   const burned = spentTeams(data, picks), skip = new Set(), plan = [];
   let cheap = [];
   for (let k = tab.nowIdx; k < LEGS.length; k++) {
-    const l = LEGS[k], near = tab.near[l.id], now = k === tab.nowIdx, rows = {};
+    const l = LEGS[k], now = k === tab.nowIdx, rows = {};
     // the current week scores on True Win % like the Planner; if the books have posted nothing yet, fall back to projections
     const strict = now && Object.keys(OPP[l.id]).some((t) => marketLine(l.id, t, data));
     for (const t of ALL_TEAMS) { const ln = OPP[l.id][t] ? (strict ? marketLine(l.id, t, data) : lineFor(l.id, t, data)) : null; rows[t] = { win: ln?.win ?? null, pick: 0 }; }
     let ev = false;
     if (now && data.actuals[l.id]) { const act0 = data.actuals[l.id], tot = Object.values(act0.picks).reduce((x, y) => x + y, 0); for (const t in rows) rows[t].pick = (act0.picks[t] || 0) / tot; ev = true; }   // picks are in: the real shares, like the board
     else if (now) { const mp = modelPick(l.id, data, params); if (Object.keys(mp).length) { for (const t in rows) rows[t].pick = mp[t] ?? 0; ev = true; } }
-    else if (near) { for (const t in rows) rows[t].pick = near.p[t] || 0; ev = true; }
     const act = now ? data.actuals[l.id] : null, an = now ? splashAnchor(l.id, data) : null;
     const finals = decidedGames(l.id, act, an);
     for (const [t, f] of Object.entries(finals)) if (rows[t]) rows[t].win = f === "W" ? 1 : 0;
@@ -524,7 +524,7 @@ export function diliPlan(data, picks, params = PRIOR) {
 // filled each week, then pick the one assignment (one team per week, no team twice) with the highest total count,
 // win chance breaking ties. Taking the biggest count first and repeating was tried and strands later weeks with
 // scraps once their favorites are grabbed early. Each row's count is the number of seasons that put that team
-// there, and the backup is the runner-up by count not used elsewhere.
+// there, and the backup is the best team still free for that week by the same score.
 export function consensusPlan(data, picks, params = PRIOR) {
   const base = planMap(data, picks, params);
   const legs = base.plan.map((p) => p.leg), byLeg = base.byLeg, used = new Set(), pick = new Array(legs.length).fill(null);
@@ -535,8 +535,8 @@ export function consensusPlan(data, picks, params = PRIOR) {
   }
   const plan = legs.map((l, j) => {
     const p = pick[j], win = p ? lineFor(l.id, p.team, data)?.win ?? null : null;
-    const alt = Object.entries(byLeg[j]).filter(([t]) => t !== p?.team && !used.has(t)).sort((a, b) => b[1] - a[1])[0] || null;
-    return { leg: l, team: p?.team || null, win, held: p?.held ?? 0, samples: MAP_SAMPLES, backup: alt ? alt[0] : null, backupWin: alt ? lineFor(l.id, alt[0], data)?.win ?? null : null, backupHeld: alt ? alt[1] : 0,
+    const alt = teams.filter((t) => t !== p?.team && !used.has(t) && OPP[l.id][t] && lineFor(l.id, t, data)?.win).map((t) => ({ t, n: byLeg[j][t] || 0, w: lineFor(l.id, t, data).win })).sort((a, b) => (b.n + 0.5 * b.w) - (a.n + 0.5 * a.w))[0] || null;
+    return { leg: l, team: p?.team || null, win, held: p?.held ?? 0, samples: MAP_SAMPLES, backup: alt ? alt.t : null, backupWin: alt ? alt.w : null, backupHeld: alt ? alt.n : 0,
       pool: l.holiday ? [...(l.id === "TG" ? TG_TEAMS : XM_TEAMS)].length : 0, poolLeft: l.holiday ? [...(l.id === "TG" ? TG_TEAMS : XM_TEAMS)].filter((t) => !spent.has(t)).length : 0 };
   });
   const live = plan.filter((p) => p.team);
@@ -1823,7 +1823,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
             let why;
             if (!p.team) why = "Nothing eligible left for this week: it would be a forfeit.";
             else if (tab === "96") why = (p.held >= cons.samples / 2 ? "Solid." : p.held >= cons.samples / 3 ? "Leaning." : "Toss-up.") + holidayNote(p) + soft;
-            else why = (p.backup == null ? "Only option." : p.dili - p.backupDili < 0.03 ? `Close call, ${p.backup} is ${(p.dili - p.backupDili).toFixed(2)} behind.` : `Clear, ${(p.dili - p.backupDili).toFixed(2)} ahead of ${p.backup}.`) + (p.ev ? "" : " Scored on win chance; no field model this far out.") + holidayNote(p) + soft;
+            else why = (p.backup == null ? "Only option." : p.dili - p.backupDili < 0.03 ? `Close call, ${p.backup} is ${(p.dili - p.backupDili).toFixed(2)} behind.` : `Clear, ${(p.dili - p.backupDili).toFixed(2)} ahead of ${p.backup}.`) + holidayNote(p) + soft;
             return (
               <tr key={l.id} className={cls + (p.team ? "" : " dead")}>
                 <td>{legLabel(l)}</td>

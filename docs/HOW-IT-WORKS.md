@@ -114,19 +114,20 @@ fetch fails, last season's market ratings regressed 40% toward average are the f
   Rows carry `forfeitMap`, `forfeitStr`, `strengthW`, `beta`; `forfeit` is the blend.
 - **Field EV in the solver**: the current week scores each team by EV (log EV − log win on top of win chance);
   every later week scores on win chance alone. `projectField` steps the popularity model forward `NEAR_LEGS` = 4
-  legs (field picks by the model, losers drop out, survivors stop holding what they picked) for the DILI Map and
-  the Future column, but the solver does not use those projections: they pile ~half the pool onto one team a
+  legs (field picks by the model, losers drop out, survivors stop holding what they picked), but neither the solver
+  nor the DILI Map scores on the forward projections: they pile ~half the pool onto one team a
   week, which hands its 27% opponent a ×3 payoff and put MIA and NYG on the 96 Map in Week 6.
 - The map fills every leg from lockedIdx() on (the first week Circa has not published picks for), except the leg
   being scored. A week locks for planning the moment its Selections PDF is in, even with games pending; before that
   a pick entered for it is soft (spentTeams = picks in weeks with actuals). The Planner's selected week still follows
   openLeg() (first week not completely over).
 - `diliPlan(data, picks, params)` is Claude's DILI Map: from the first open leg, build rows as the Planner does
-  (market win + model shares for the current leg, forward-field shares for near legs, win chance alone beyond),
+  (market win + model shares for the current leg, win chance alone for every later leg),
   `computeDili` with the already-planned legs skipped from the forfeit map, take the top, spend it, repeat. Also
   returns winOut, weakest, and `cheap` (lowest forfeit among this week's favorites).
 - `consensusPlan(data, picks, params)` is Claude's 96 Map: the one assignment (hungarian) over `planMap().byLeg`
-  counts with the highest total agreement, win chance breaking ties; backup = runner-up count not used elsewhere.
+  counts with the highest total agreement, win chance breaking ties; backup = best team still free that week by the
+  same score.
 - `planMap(data, picks, params)` is the single-solve map underneath (also used by DILI's tooltips): the projected map, per-leg first-choice counts across the 96
   draws, the backup (what fills the leg after burning the pick) and cost, field ownership for near legs, the
   chance of winning out, the three weakest legs, and the three favorites (55%+) in the current leg used least often in
