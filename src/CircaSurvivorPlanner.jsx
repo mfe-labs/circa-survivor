@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { LEGS, ALL_TEAMS, OPP, TG_TEAMS, XM_TEAMS, legLabel } from "./schedule.js";
 import { HFA } from "./ratings.js";
 import { REPO, readFile, writeFile, whoAmI, dispatchWorkflow } from "./github.js";
+import { fetchSelections, fetchResults, legFromCirca } from "./circaLive.js";
 // Bundled copies of the data files (built into the site on every deploy). The page also re-reads the
 // live files from the repo on load so viewers see saves made since the last deploy.
 import picksBundled from "../data/picks.json";
@@ -412,6 +413,15 @@ function strengthWeight(legId) { const left = LEGS.length - 1 - LEGS.findIndex((
 // DILI = EV ÷ forfeit, where forfeit = (map value with the team kept) ÷ (map value with it burned), averaged over
 // the noisy seasons. Fills r.forfeit, r.swaps (what the projected map changes if the team is burned) and r.dili.
 // Returns the entry's projected map for the other open legs.
+// games already decided in a week: W/L for every team in them, from the picked teams' results (an unpicked
+// winner or loser is implied by its opponent) or, before Circa's picks are in, from the Splash Thursday final
+function decidedGames(legId, act, anchor) {
+  const out = {};
+  const mark = (t, f) => { if (!OPP[legId]?.[t]) return; out[t] = f; const o = OPP[legId][t].opp; if (o) out[o] = f === "W" ? "L" : "W"; };
+  if (act) { for (const t of act.won) mark(t, "W"); for (const t of act.lost) if (t !== "NOPICK") mark(t, "L"); }
+  else if (anchor) for (const [t, f] of Object.entries(anchor.final)) mark(t, f);
+  return out;
+}
 export function computeDili(legId, rows, data, burned, params = PRIOR, skip = null) {
   const tab = seasonTable(data, params);
   const legIdx = mapLegs(tab, legId, skip);
@@ -486,12 +496,15 @@ export function diliPlan(data, picks, params = PRIOR) {
     const strict = now && Object.keys(OPP[l.id]).some((t) => marketLine(l.id, t, data));
     for (const t of ALL_TEAMS) { const ln = OPP[l.id][t] ? (strict ? marketLine(l.id, t, data) : lineFor(l.id, t, data)) : null; rows[t] = { win: ln?.win ?? null, pick: 0 }; }
     let ev = false;
-    if (now) { const mp = modelPick(l.id, data, params); if (Object.keys(mp).length) { for (const t in rows) rows[t].pick = mp[t] ?? 0; ev = true; } }
+    if (now && data.actuals[l.id]) { const act0 = data.actuals[l.id], tot = Object.values(act0.picks).reduce((x, y) => x + y, 0); for (const t in rows) rows[t].pick = (act0.picks[t] || 0) / tot; ev = true; }   // picks are in: the real shares, like the board
+    else if (now) { const mp = modelPick(l.id, data, params); if (Object.keys(mp).length) { for (const t in rows) rows[t].pick = mp[t] ?? 0; ev = true; } }
     else if (near) { for (const t in rows) rows[t].pick = near.p[t] || 0; ev = true; }
-    if (now) { const an = splashAnchor(l.id, data); if (an) for (const [t, f] of Object.entries(an.final)) if (rows[t]) rows[t].win = f === "W" ? 1 : 0; }
+    const act = now ? data.actuals[l.id] : null, an = now ? splashAnchor(l.id, data) : null;
+    const finals = decidedGames(l.id, act, an);
+    for (const [t, f] of Object.entries(finals)) if (rows[t]) rows[t].win = f === "W" ? 1 : 0;
     if (ev && computeEV(l.id, rows).blanked) ev = false;
     if (!ev) for (const t in rows) rows[t].ev = rows[t].win;
-    if (now) { const an = splashAnchor(l.id, data); if (an) for (const t of Object.keys(an.final)) if (rows[t]) rows[t].ev = null; }
+    for (const t of Object.keys(finals)) if (rows[t]) rows[t].ev = null;
     computeDili(l.id, rows, data, burned, params, skip);
     const cands = Object.keys(OPP[l.id]).filter((t) => rows[t].dili != null).sort((a, b) => rows[b].dili - rows[a].dili);
     const [t1, t2] = cands, r1 = t1 ? rows[t1] : null, r2 = t2 ? rows[t2] : null;
@@ -658,7 +671,10 @@ function bandError(data, params, legs) {
   const sd = (xs, d0) => Math.min(ERR_MAX, Math.max(ERR_MIN, Math.sqrt((xs.reduce((a, x) => a + x * x, 0) + ERR_PSEUDO * d0 * d0) / (xs.length + ERR_PSEUDO))));
   return { errTop: +sd(top, MODEL_ERR_TOP).toFixed(3), errOther: +sd(other, MODEL_ERR).toFixed(3), nTop: top.length, nOther: other.length };
 }
-const lockTime = (leg) => new Date(leg.start + "T16:00:00-07:00").getTime() - 24 * 3600 * 1000;   // Saturday 4 pm PT before a Sunday start
+// Circa locks picks at 4 pm PT on the Saturday of each leg (a leg that starts on a Sunday locks the day before).
+// `start` is the leg's first game day, usually a Thursday, so step forward to that week's Saturday.
+const lockTime = (leg) => { const tz0 = leg.start >= "2026-11-01" ? "-08:00" : "-07:00"; if (leg.holiday) return new Date(leg.start + "T16:00:00" + tz0).getTime() - 86400e3; const d = new Date(leg.start + "T12:00:00Z"); const day = d.getUTCDay(); const sat = new Date(d); sat.setUTCDate(d.getUTCDate() + (day === 0 ? -1 : 6 - day)); const tz = leg.start >= "2026-11-01" ? "-08:00" : "-07:00"; return new Date(sat.toISOString().slice(0, 10) + "T16:00:00" + tz).getTime(); };
+const legEnd = (leg) => { const i = LEGS.findIndex((l) => l.id === leg.id); const next = LEGS[i + 1]; return next ? new Date(next.start + "T00:00:00-07:00").getTime() : lockTime(leg) + 4 * 86400e3; };
 function modelPickRange(legId, data, params, now = Date.now()) {
   return cached(data, "pr", `${legId}|${params.a}|${params.b}|${params.c ?? 0}|${params.errTop ?? ""}|${params.errOther ?? ""}`, () => {
     const { a, b, c = 0, errTop = MODEL_ERR_TOP, errOther = MODEL_ERR } = params;
@@ -1184,6 +1200,37 @@ export default function CircaSurvivorPlanner() {
   };
   const saveActuals = (json, message) => { setJson("actuals", () => json); setTimeout(() => save("actuals", message), 0); };
 
+  // ---- Circa's picks, read by the page itself ----
+  // Once a week has locked and the repo has no picks for it yet, the page looks for Circa's Selections PDF
+  // directly, every ten minutes while open, and uses it the moment it appears. Signed in, it also saves the
+  // week to the repo so the job and other viewers get it; otherwise the job catches up on its own.
+  const [circaLive, setCircaLive] = useState(null);
+  const openId = loaded ? openLeg(files.actuals.json?.legs) : null, openHas = !!files.actuals.json?.legs?.[openId];
+  useEffect(() => {
+    if (!loaded || !openId || openHas) return;
+    const leg = LEGS.find((l) => l.id === openId), lock = lockTime(leg);
+    if (Date.now() < lock || Date.now() > legEnd(leg)) return;              // from Saturday's lock until the next leg starts
+    let live = true, timer = null;
+    const check = async () => {
+      setCircaLive({ legId: openId, status: "checking", at: Date.now() });
+      const sel = await fetchSelections(openId).catch(() => null);
+      if (!live) return;
+      if (!sel) { setCircaLive({ legId: openId, status: "none", at: Date.now() }); timer = setTimeout(check, 10 * 60e3); return; }
+      const results = await fetchResults(openId);
+      if (!live) return;
+      const d = buildData({ picks: filesRef.current.picks.json, actuals: filesRef.current.actuals.json, odds: filesRef.current.odds.json, ratings: filesRef.current.ratings.json, splash: filesRef.current.splash?.json }, false);
+      const tl = fieldTimeline(d), before = tl.length ? tl[tl.length - 1].after : d.contest.start;
+      const entry = legFromCirca(sel.parsed, results, before, sel.url);
+      entry.fv = {}; for (const t of Object.keys(OPP[openId])) entry.fv[t] = +fvFor(openId, t, d).toFixed(2);
+      entry.fvAt = d.ratingsAt || new Date().toISOString();
+      setJson("actuals", (a) => ({ ...(a || {}), legs: { ...(a?.legs || {}), [openId]: entry } }));
+      setCircaLive({ legId: openId, status: "got", at: Date.now(), total: sel.parsed.total });
+      if (canEdit) setTimeout(() => save("actuals", `Actuals: ${legLabel(leg)} (read from Circa by the app)`), 0);
+    };
+    check();
+    return () => { live = false; clearTimeout(timer); };
+  }, [loaded, openId, openHas]); // eslint-disable-line
+
   const signIn = () => { const t = tokenDraft.trim(); if (!t) return; try { localStorage.setItem(TOKEN_KEY, t); } catch {} setToken(t); setTokenDraft(""); setSignin(false); };
   const signOut = () => { try { localStorage.removeItem(TOKEN_KEY); } catch {} setToken(""); setUser(null); say("Signed out"); };
   // safety net for GitHub's scheduler: when the owner opens the app and the lines are stale, refresh them (once per visit)
@@ -1270,10 +1317,11 @@ export default function CircaSurvivorPlanner() {
         pick: (act || hasModel) ? (pick[t] ?? (disp ? 0 : null)) : null, spread: disp ? disp.spread : null, proj: disp ? disp.proj : false, pm: modelRaw[t], act: !!act };
     }
     const anchor = splashAnchor(legId, data);
-    if (anchor) for (const [t, f] of Object.entries(anchor.final)) { rows[t].win = f === "W" ? 1 : 0; rows[t].final = f; rows[t].status = "final"; }
+    const finals = decidedGames(legId, act, anchor);
+    for (const [t, f] of Object.entries(finals)) { if (!rows[t]) continue; rows[t].win = f === "W" ? 1 : 0; rows[t].final = f; rows[t].status = "final"; }
     if (anchor) { const bl = blendAnchor(anchor, modelRaw, params); for (const t of Object.keys(anchor.shares)) { rows[t].anchor = bl.blended[t]; rows[t].anchorMap = anchor.shares[t]; rows[t].anchorW = bl.w[t]; rows[t].anchorRaw = anchor.raw[t]; rows[t].anchorAlive = anchor.alive; } }
     const ev = computeEV(legId, rows);
-    if (anchor) for (const t of Object.keys(anchor.final)) { rows[t].ev = null; rows[t].raw = null; }
+    for (const t of Object.keys(finals)) if (rows[t]) { rows[t].ev = null; rows[t].raw = null; }
     for (const t of ALL_TEAMS) rows[t].fv = data.ratings || act?.fv ? fvAt(legId, t, data) : null;
     if (!act && hasModel) { const rg = modelPickRange(legId, data, params); for (const t of ALL_TEAMS) if (rg[t]) Object.assign(rows[t], { pLo: rg[t].lo, pHi: rg[t].hi, evLo: rg[t].evLo, evHi: rg[t].evHi }); }
     return { rows, ev };
@@ -1338,7 +1386,14 @@ export default function CircaSurvivorPlanner() {
     </>
   );
   // books contributing to this leg's lines, for the note under the controls
+  const circaNote = (() => {
+    const act = data.actuals[legId];
+    if (act?.source) return `Circa picks in ${act.asOf.replace(/ \(.*\)$/, "")}`;
+    if (circaLive?.legId === legId) return circaLive.status === "checking" ? "Checking Circa for the picks…" : `Circa picks not posted yet · checked ${fmtTime(new Date(circaLive.at).toISOString())}`;
+    return null;
+  })();
   const lineNote = (() => {
+    if (circaNote) return circaNote;
     if (!legInfo) return "No lines yet for this week";
     if (!legInfo.games) return `Look-ahead spreads for ${legInfo.counts.lookahead} games · no moneylines yet`;
     const books = new Set();

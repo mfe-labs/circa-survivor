@@ -52,6 +52,13 @@ for (const leg of LEGS) {
       const parsed = parseSelections(text);
       if (parsed.unknown.length) console.warn(`${leg.id}: unknown team names in PDF: ${parsed.unknown.join(", ")}`);
       const before = liveBefore(leg.id), noPick = before - parsed.total;
+      // first time this week's picks land: leave a note for the workflow to turn into an issue (= an email)
+      if (process.env.NEW_PICKS_FILE) {
+        const rows = Object.entries(parsed.picks).sort((x, y) => y[1] - x[1]);
+        const pct = (n) => (100 * n / before).toFixed(1) + "%";
+        writeFileSync(process.env.NEW_PICKS_FILE, JSON.stringify({ title: `${leg.id} picks are in: ${rows.slice(0, 5).map(([t, n]) => `${t} ${pct(n)}`).join(", ")}`,
+          body: `Circa posted the ${leg.id} Selections PDF. ${parsed.total.toLocaleString()} picks from ${before.toLocaleString()} entries alive going in${noPick > 0 ? `, ${noPick} with no pick` : ""}.\n\n` + rows.map(([t, n]) => `- ${t}: ${pct(n)} (${n.toLocaleString()})`).join("\n") + `\n\n${url}` }));
+      }
       picks = { ...parsed.picks };
       if (noPick > 0) picks.NOPICK = noPick;
       if (noPick < 0) console.warn(`${leg.id}: PDF lists ${parsed.total} picks but only ${before} entries were alive`);

@@ -14,6 +14,13 @@ each with its own pick. Each team once per entry. Tie = loss. Schedule is hard-c
   exists, that spread is stored as a look-ahead line (`books.nflverse.lookahead`), refreshed every run and replaced
   by real prices as they arrive. In the app it gives a win chance for planning (Future, DILI, the Map, the grid
   cell) but never a True Win %, so W% and EV wait for moneylines. The ratings fit already uses those spreads.
+- **Circa picks, read by the page** (`src/circaLive.js`): from Saturday's lock until Monday morning, if the open week
+  has no picks in the repo, the page fetches Circa's Selections PDF itself (Circa and ESPN both allow cross-origin
+  reads), parses it with pdf.js using the job's parser, scores it from ESPN, freezes future values, and uses it at
+  once; every ten minutes until it appears. Signed in, it saves the week to the repo. The status note under the week
+  dropdown says "Circa picks in" or "not posted yet · checked …". The results job also runs every ten minutes
+  6–9 pm PT on Saturdays and, the first time a week's picks land, opens and closes a GitHub issue titled with the
+  top five shares, which GitHub emails to the owner.
 - **Splash** (`splash.json`, hand-entered from Jeremy's screenshots of the Splash x Polymarket $21M survivor, a
   $1,000 field of ~22,700): each complete week's pick counts, and for the current week the reading Splash shows the
   moment the Thursday game kicks off (`thursday.picks`, `alive`) plus that game's result (`final`). Read-only in the

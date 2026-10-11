@@ -1,5 +1,6 @@
 // Circa Selections PDF parser + ESPN results mapping.
 import { parseSelections, selectionFileNames, resultsFromScoreboard, espnWeek, NICK } from "../scripts/circa.mjs";
+import { legFromCirca } from "../src/circaLive.js";
 let fails = 0; const ok = (name, cond, extra = "") => { console.log(name + ":", cond ? "OK" : "FAIL", extra); if (!cond) fails++; };
 
 const text = `Circa Survivor 2026
@@ -41,4 +42,12 @@ ok("tie = both lose", res.TB === "lost" && res.CIN === "lost");
 ok("unfinished game pending", res.DEN === "pending" && res.KC === "pending");
 ok("ESPN WSH alias", res.PHI === "won" && res.WAS === "lost");
 ok("game not in this leg ignored", res.DAL === undefined && res.MIA === undefined);
+// the page builds the same week record the job does
+(() => {
+  const parsed = { picks: { DAL: 2554, HOU: 1228 }, entries: {}, unknown: [], total: 3782 };
+  const e = legFromCirca(parsed, { DAL: "lost", HOU: "pending" }, 3800, "https://x/w5.pdf", new Date("2026-10-10T19:00:00-07:00").getTime());
+  ok("no-picks are counted from the entries alive going in", e.picks.NOPICK === 18 && e.lost.includes("NOPICK"));
+  ok("results sort into won/lost/pending", e.lost.includes("DAL") && e.pending.includes("HOU") && e.won.length === 0);
+  ok("record looks like the job's", /^Oct 10 \(1 pending\)$/.test(e.asOf) && e.source === "https://x/w5.pdf");
+})();
 if (fails) { console.log(`${fails} FAILED`); process.exit(1); }

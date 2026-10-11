@@ -123,9 +123,14 @@ ok("future value on a readable scale", fvFor("W2", "KC", data) < 18 && fvFor("W2
   ok("DILI map fills every open week with distinct teams", dp.plan.length >= open.length && dp.plan.every((p) => p.team) && new Set(dp.plan.map((p) => p.team)).size === dp.plan.length, `${dp.plan.length} weeks, ${ms} ms`);
   ok("DILI map is quick enough", ms < 3000, `${ms} ms`);
   // its current week equals the Planner's top DILI
-  const leg = dp.plan[0].leg.id, mp = modelPick(leg, real, params), rows = {};
-  for (const tm of ALL_TEAMS) { const m = marketLine(leg, tm, real); rows[tm] = { win: m ? m.win : null, pick: mp[tm] ?? 0 }; }
-  computeEV(leg, rows); computeDili(leg, rows, real, spentTeams(real, e.picks), params);
+  const leg = dp.plan[0].leg.id, act = real.actuals[leg], mp = modelPick(leg, real, params), rows = {};
+  const actTot = act ? Object.values(act.picks).reduce((x, y) => x + y, 0) : 0;
+  for (const tm of ALL_TEAMS) { const m = marketLine(leg, tm, real); rows[tm] = { win: m ? m.win : null, pick: act ? (act.picks[tm] || 0) / actTot : mp[tm] ?? 0 }; }
+  // decided games read as decided, like the board
+  const finals = {}; if (act) { const mark = (x, f) => { if (!OPP[leg][x]) return; finals[x] = f; finals[OPP[leg][x].opp] = f === "W" ? "L" : "W"; }; for (const x of act.won) mark(x, "W"); for (const x of act.lost) if (x !== "NOPICK") mark(x, "L"); }
+  for (const [tm, f] of Object.entries(finals)) if (rows[tm]) rows[tm].win = f === "W" ? 1 : 0;
+  computeEV(leg, rows); for (const tm of Object.keys(finals)) if (rows[tm]) rows[tm].ev = null;
+  computeDili(leg, rows, real, spentTeams(real, e.picks), params);
   const top = Object.keys(OPP[leg]).filter((tm) => rows[tm].dili != null).sort((x, y) => rows[y].dili - rows[x].dili)[0];
   ok("DILI map's current week is the Planner's pick", dp.plan[0].team === top && Math.abs(dp.plan[0].dili - rows[top].dili) < 1e-9, `${leg}: ${dp.plan[0].team} vs ${top}`);
   ok("DILI map never reuses a spent team", dp.plan.every((p) => !spentTeams(real, e.picks).has(p.team)));

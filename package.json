@@ -10,12 +10,13 @@
     "freeze-fv": "esbuild scripts/freeze-fv.jsx --bundle --platform=node --format=cjs --outfile=node_modules/.cache/freeze-fv.cjs --loader:.jsx=jsx --jsx=automatic --external:react --external:react-dom --log-level=warning && node node_modules/.cache/freeze-fv.cjs"
   },
   "dependencies": {
+    "pdfjs-dist": "^6.4.299",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "vite": "^5.4.0",
     "@vitejs/plugin-react": "^4.3.0",
-    "esbuild": "^0.23.0"
+    "esbuild": "^0.23.0",
+    "vite": "^5.4.0"
   }
 }

@@ -6,19 +6,16 @@ on:
     # 15:41, which is exactly when Monday Night Football finishes, so the last result of a week sat
     # unrecorded for half a day. The job exits in seconds when there is nothing new.
     - cron: "41 */3 * * *"
-    # Saturday evening Pacific, when Circa posts the Selections PDF (their card is tweeted 6:18-6:22 pm PT, so the
-    # PDF is up by about 6). Cron is UTC, so these are Sunday UTC: 6:01, 6:17, 7:01, 7:17, 8:01 pm PDT, which also
-    # cover 5:01-7:01 pm PST once the clocks change in November. The job exits in seconds when nothing is new.
-    - cron: "1 1 * * 0"
-    - cron: "17 1 * * 0"
-    - cron: "1 2 * * 0"
-    - cron: "17 2 * * 0"
-    - cron: "1 3 * * 0"
+    # Saturday evening Pacific, when Circa posts the Selections PDF (up by about 6:17 pm PT). Cron is UTC, so this is
+    # Sunday 01:00-03:59 UTC = 6-9 pm PDT (5-8 pm PST after the clocks change), every ten minutes on odd minutes,
+    # which GitHub's scheduler drops far less often than top-of-hour slots. The job exits in seconds when nothing is new.
+    - cron: "3,13,23,33,43,53 1-3 * * 0"
   workflow_dispatch:
 
 permissions:
   contents: write
   actions: write
+  issues: write
 
 concurrency:
   group: data
@@ -36,6 +33,8 @@ jobs:
       - run: npm ci
       - name: Picks from Circa's Selections PDF, results from ESPN
         run: node scripts/fetch-actuals.mjs
+        env:
+          NEW_PICKS_FILE: ${{ runner.temp }}/new-picks.json
       - name: Freeze future value for any week that just locked
         run: npm run freeze-fv
       - name: Commit and redeploy
@@ -50,7 +49,15 @@ jobs:
             git add data/actuals.json data/picks.json
             if git diff --cached --quiet; then echo "no changes"; exit 0; fi
             git commit -q -m "Update Circa results"
-            if git push -q origin HEAD:main; then gh workflow run deploy.yml; exit 0; fi
+            if git push -q origin HEAD:main; then
+              gh workflow run deploy.yml
+              # a week's picks landed for the first time: open (and close) an issue, which GitHub emails to the owner
+              if [ -f "$RUNNER_TEMP/new-picks.json" ]; then
+                N=$(gh issue create --title "$(jq -r .title "$RUNNER_TEMP/new-picks.json")" --body "$(jq -r .body "$RUNNER_TEMP/new-picks.json")" --label picks 2>/dev/null || gh issue create --title "$(jq -r .title "$RUNNER_TEMP/new-picks.json")" --body "$(jq -r .body "$RUNNER_TEMP/new-picks.json")")
+                gh issue close "$N" --comment "Auto-closed: notification only. The picks are in the app." || true
+              fi
+              exit 0
+            fi
             echo "push raced with another run, recomputing on top of main ($i)"
             git fetch -q origin main && git reset -q --hard origin/main
             node scripts/fetch-actuals.mjs && npm run freeze-fv
