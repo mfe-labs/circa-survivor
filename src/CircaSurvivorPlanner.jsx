@@ -955,12 +955,12 @@ const CSS = `
 .csp .strip .v.sm { font-size:15px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; min-height:26px; }
 .csp .strip .v.sm .mut { color:var(--ink3); font-weight:500; }
 .csp .mapv .lede { font-size:12px; color:var(--ink2); line-height:1.5; max-width:84ch; margin:0 0 10px; }
-.csp .maptabs { display:flex; align-items:flex-end; gap:2px; margin:12px 0 0; padding:0 6px; border-bottom:1px solid var(--rule2); }
-.csp .maptabs > .tab { position:relative; display:flex; align-items:center; gap:8px; box-sizing:border-box; height:34px; margin-bottom:-1px; padding:0 14px 0 12px; font:inherit; font-size:13px; font-weight:500; color:var(--ink2); background:none; border:1px solid transparent; border-bottom:none; border-radius:8px 8px 0 0; cursor:pointer; user-select:none; -webkit-user-select:none; white-space:nowrap; }
+.csp .maptabs { display:flex; align-items:flex-end; gap:2px; margin:12px 0 0; padding:0 6px; background:linear-gradient(var(--rule2), var(--rule2)) left bottom / 100% 1px no-repeat; }
+.csp .maptabs > .tab { position:relative; display:flex; align-items:center; gap:8px; box-sizing:border-box; height:34px; padding:0 14px 0 12px; font:inherit; font-size:13px; font-weight:500; color:var(--ink2); background:none; border:1px solid transparent; border-radius:8px 8px 0 0; cursor:pointer; user-select:none; -webkit-user-select:none; white-space:nowrap; }
 .csp .maptabs > .tab::before { content:""; flex:none; width:7px; height:7px; border-radius:50%; background:var(--rule2); }
 .csp .maptabs > .tab.claude::before { background:#A3D2A9; }
 .csp .maptabs > .tab:hover { color:var(--ink); background:var(--panel); }
-.csp .maptabs > .tab.on { color:var(--ink); font-weight:600; background:var(--surface); border-color:var(--rule2); box-shadow:0 1px 0 var(--surface); z-index:1; }
+.csp .maptabs > .tab.on { color:var(--ink); font-weight:600; background:var(--surface); border-color:var(--rule2); border-bottom-color:var(--surface); }
 .csp .maptabs > .tab.on::before { background:var(--ink3); }
 .csp .maptabs > .tab.claude.on::before { background:var(--green); }
 .csp .maptabs > .tab[draggable="true"] { cursor:grab; }
@@ -1802,11 +1802,11 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
   }, [tab, maps.length]);
   return (
     <div className={"act mapv" + (rh < 34 ? " tight" : "")} ref={boxRef} style={{ "--mrh": rh + "px" }}>
-      <div className="maptabs">
+      <div className="maptabs" onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOver(null); }}>
         <div role="button" tabIndex={0} className={"tab claude" + (tab === "dili" ? " on" : "")} onClick={() => setTab("dili")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("dili"); } }} title="The Planner's pick each week, applied forward as if nothing changes">Claude's DILI Map</div>
         <div role="button" tabIndex={0} className={"tab claude" + (tab === "96" ? " on" : "")} onClick={() => setTab("96")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("96"); } }} title="The plan the 96 jiggled seasons agree on">Claude's 96 Map</div>
         {maps.map((m) => <div key={m.id} role="button" tabIndex={0} className={"tab" + (custom?.id === m.id ? " on" : "") + (drag === m.id ? " drag" : "") + (over?.id === m.id && drag !== m.id ? (over.after ? " ins-r" : " ins-l") : "")} onClick={() => setTab(m.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab(m.id); } }}
-          draggable={canEdit} onDragStart={(e) => { e.dataTransfer.setData("text/plain", m.id); e.dataTransfer.effectAllowed = "move"; setDrag(m.id); }} onDragEnter={(e) => e.preventDefault()} onDragOver={(e) => dropAt(e, m)} onDrop={(e) => { e.preventDefault(); drop(); }} onDragEnd={drop}
+          draggable={canEdit} onDragStart={(e) => { e.dataTransfer.setData("text/plain", m.id); e.dataTransfer.effectAllowed = "move"; setDrag(m.id); }} onDragEnter={(e) => e.preventDefault()} onDragOver={(e) => dropAt(e, m)} onDrop={(e) => { e.preventDefault(); drop(); }} onDragEnd={() => { setDrag(null); setOver(null); }}
           title={canEdit && maps.length > 1 ? "Drag to reorder" : undefined}>{m.name}</div>)}
         {canEdit && <div role="button" tabIndex={0} className="tab add" onClick={create} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); create(); } }} title="New map, starting from Claude's DILI Map">+</div>}
         {custom && canEdit && <span className="tabact"><button className="link" onClick={rename}>Rename</button><button className="link" onClick={remove}>Delete</button></span>}
