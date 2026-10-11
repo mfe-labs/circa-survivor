@@ -398,7 +398,7 @@
    "fvAt": "2026-10-03T18:00:00.950Z"
   },
   "W5": {
-   "asOf": "Oct 11 (8 pending)",
+   "asOf": "Oct 11 (7 pending)",
    "picks": {
     "DAL": 2554,
     "HOU": 1228,
@@ -434,6 +434,7 @@
     "NE",
     "NYJ",
     "GB",
+    "DEN",
     "PIT",
     "MIN"
    ],
@@ -452,7 +453,6 @@
    "pending": [
     "ATL",
     "DET",
-    "DEN",
     "LAR",
     "BUF",
     "SEA",
