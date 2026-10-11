@@ -956,13 +956,14 @@ const CSS = `
 .csp .strip .v.sm .mut { color:var(--ink3); font-weight:500; }
 .csp .mapv .lede { font-size:12px; color:var(--ink2); line-height:1.5; max-width:84ch; margin:0 0 10px; }
 .csp .maptabs { display:flex; align-items:flex-end; gap:2px; margin:12px 0 0; border-bottom:1px solid var(--rule); }
-.csp .maptabs > button { height:32px; padding:0 14px; font:inherit; font-size:13px; font-weight:500; color:var(--ink2); background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-1px; cursor:pointer; }
-.csp .maptabs > button:hover { color:var(--ink); }
-.csp .maptabs > button.on { color:var(--ink); border-bottom-color:var(--ink); font-weight:600; }
+.csp .maptabs > button, .csp .maptabs > .tab { height:32px; line-height:32px; box-sizing:border-box; user-select:none; -webkit-user-select:none; padding:0 14px; font:inherit; font-size:13px; font-weight:500; color:var(--ink2); background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-1px; cursor:pointer; }
+.csp .maptabs > button:hover, .csp .maptabs > .tab:hover { color:var(--ink); }
+.csp .maptabs > .tab[draggable="true"] { cursor:grab; }
+.csp .maptabs > button.on, .csp .maptabs > .tab.on { color:var(--ink); border-bottom-color:var(--ink); font-weight:600; }
 .csp .maptabs > button.add { font-size:17px; font-weight:400; padding:0 12px; color:var(--ink3); }
-.csp .maptabs > button.drag { opacity:.4; }
-.csp .maptabs > button.ins-l { box-shadow:-2px 0 0 var(--ink); }
-.csp .maptabs > button.ins-r { box-shadow:2px 0 0 var(--ink); }
+.csp .maptabs > .tab.drag { opacity:.4; }
+.csp .maptabs > .tab.ins-l { box-shadow:-2px 0 0 var(--ink); }
+.csp .maptabs > .tab.ins-r { box-shadow:2px 0 0 var(--ink); }
 .csp .maptabs .tabact { margin-left:auto; display:flex; gap:6px; align-self:center; }
 .csp .strip .v.bad { color:var(--red); }
 .csp .maptab .pc { display:inline-flex; align-items:center; height:22px; vertical-align:middle; }
@@ -1083,7 +1084,7 @@ const CSS = `
   .csp .act { padding:4px 12px 20px; }
   .csp .maptabs { overflow-x:auto; flex-wrap:nowrap; scrollbar-width:none; }
   .csp .maptabs::-webkit-scrollbar { display:none; }
-  .csp .maptabs > button { flex:none; padding:0 10px; }
+  .csp .maptabs > button, .csp .maptabs > .tab { flex:none; padding:0 10px; }
   .csp .maptabs .tabact { margin-left:12px; flex:none; }
   .csp .strip { margin:8px 0 12px; gap:8px 0; }
   .csp .strip .fig { flex:1 1 42%; border-right:none; margin-right:0; padding:4px 12px 4px 0; }
@@ -1798,9 +1799,9 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
       <div className="maptabs">
         <button className={tab === "dili" ? "on" : ""} onClick={() => setTab("dili")} title="The Planner's pick each week, applied forward as if nothing changes">Claude's DILI Map</button>
         <button className={tab === "96" ? "on" : ""} onClick={() => setTab("96")} title="The plan the 96 jiggled seasons agree on">Claude's 96 Map</button>
-        {maps.map((m) => <button key={m.id} className={(custom?.id === m.id ? "on" : "") + (drag === m.id ? " drag" : "") + (over?.id === m.id && drag !== m.id ? (over.after ? " ins-r" : " ins-l") : "")} onClick={() => setTab(m.id)}
-          draggable={canEdit} onDragStart={(e) => { setDrag(m.id); e.dataTransfer.effectAllowed = "move"; }} onDragOver={(e) => dropAt(e, m)} onDragLeave={() => setOver((o) => (o?.id === m.id ? null : o))} onDrop={drop} onDragEnd={drop}
-          title={canEdit && maps.length > 1 ? "Drag to reorder" : undefined}>{m.name}</button>)}
+        {maps.map((m) => <div key={m.id} role="button" tabIndex={0} className={"tab" + (custom?.id === m.id ? " on" : "") + (drag === m.id ? " drag" : "") + (over?.id === m.id && drag !== m.id ? (over.after ? " ins-r" : " ins-l") : "")} onClick={() => setTab(m.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab(m.id); } }}
+          draggable={canEdit} onDragStart={(e) => { e.dataTransfer.setData("text/plain", m.id); e.dataTransfer.effectAllowed = "move"; setDrag(m.id); }} onDragEnter={(e) => e.preventDefault()} onDragOver={(e) => dropAt(e, m)} onDrop={(e) => { e.preventDefault(); drop(); }} onDragEnd={drop}
+          title={canEdit && maps.length > 1 ? "Drag to reorder" : undefined}>{m.name}</div>)}
         {canEdit && <button className="add" onClick={create} title="New map, starting from Claude's DILI Map">+</button>}
         {custom && canEdit && <span className="tabact"><button className="link" onClick={rename}>Rename</button><button className="link" onClick={remove}>Delete</button></span>}
       </div>
