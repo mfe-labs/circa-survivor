@@ -283,7 +283,7 @@ function holidayPressure(legId, team, data, av) {
 // choice in a distant week only half the time is charged about half. Same noise on every candidate.
 // The next few weeks use the team's projected EV rather than its win chance, from a forward run of the field
 // model, so a team most of the field is about to burn gets credit for the quiet spot it leaves you later.
-const NEAR_LEGS = 4;                        // legs ahead that use field-aware EV; further out the field model drifts
+const NEAR_LEGS = 4;                        // legs ahead the field is projected for (DILI Map, Future column); the season solver trusts it for the current week only
 const MAP_SAMPLES = 96;                     // noisy seasons averaged per forfeit; fixed seed, so numbers are stable
 const MAP_FLOOR = 0.02;                     // "win chance" of a leg with nothing to pick: a forfeit, near-certain loss
 const MARGIN_SD = 13.5;                     // points of margin per unit of win-chance z
@@ -320,8 +320,9 @@ function projectField(legId, data, params) {
   });
 }
 // Everything the map solver needs, for every leg not yet locked, per team: win chance as a z-score, how much
-// noise to add for how far off the leg is, the field-aware EV adjustment (log EV − log win, near legs only),
-// and the shared noise draws. "Now" is the first week Circa has not published picks for (lockedIdx), so a week
+// noise to add for how far off the leg is, the field-aware EV adjustment (log EV − log win, current week only:
+// the projected fields further out pile half the pool onto one team, which would hand its 27% opponent a ×3
+// payoff and put underdogs on the map), and the shared noise draws. "Now" is the first week Circa has not published picks for (lockedIdx), so a week
 // leaves the plan the moment its picks are in. Built once per data snapshot.
 function seasonTable(data, params) {
   return cached(data, "st", `${params.a}|${params.b}`, () => {
@@ -332,7 +333,7 @@ function seasonTable(data, params) {
       if (k < nowIdx) return;
       const rows = {}; for (const t of ALL_TEAMS) rows[t] = { win: lineFor(l.id, t, data)?.win ?? null, pick: near[l.id]?.p[t] || 0 };
       const useEv = !!near[l.id]; if (useEv) computeEV(l.id, rows);
-      ALL_TEAMS.forEach((t, i) => { const r = rows[t]; if (r.win == null) return; z[k][i] = probit(r.win); sd[k][i] = noiseSd(k - nowIdx + 1, !!marketLine(l.id, t, data)); ff[k][i] = useEv && r.ev != null ? Math.log(r.ev / r.win) : 0; });
+      ALL_TEAMS.forEach((t, i) => { const r = rows[t]; if (r.win == null) return; z[k][i] = probit(r.win); sd[k][i] = noiseSd(k - nowIdx + 1, !!marketLine(l.id, t, data)); ff[k][i] = useEv && k === nowIdx && r.ev != null ? Math.log(r.ev / r.win) : 0; });
     });
     const r = seededRng(20261), eps = [];
     for (let s = 0; s < MAP_SAMPLES; s++) { const e = LEGS.map(() => new Float64Array(n)); for (let k = nowIdx; k < LEGS.length; k++) for (let i = 0; i < n; i++) e[k][i] = gauss(r); eps.push(e); }
@@ -520,21 +521,18 @@ export function diliPlan(data, picks, params = PRIOR) {
   return { plan, currentLeg: LEGS[tab.nowIdx] || null, winOut: live.length === plan.length && plan.length ? live.reduce((x, p) => x * p.win, 1) : 0, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), cheap };
 }
 // Claude's 96 Map: the plan the jiggled seasons agree on. Over the 96 noisy solves, count how often each team
-// filled each week, then assign in order of agreement (highest count first, one week per team) so no team is used
-// twice. A week nothing agrees on falls back to the best win chance still available. Each row's count is the
-// number of seasons that put that team there, and the backup is the runner-up by count not used elsewhere.
+// filled each week, then pick the one assignment (one team per week, no team twice) with the highest total count,
+// win chance breaking ties. Taking the biggest count first and repeating was tried and strands later weeks with
+// scraps once their favorites are grabbed early. Each row's count is the number of seasons that put that team
+// there, and the backup is the runner-up by count not used elsewhere.
 export function consensusPlan(data, picks, params = PRIOR) {
   const base = planMap(data, picks, params);
   const legs = base.plan.map((p) => p.leg), byLeg = base.byLeg, used = new Set(), pick = new Array(legs.length).fill(null);
-  const pairs = []; byLeg.forEach((m, j) => { for (const [t, n] of Object.entries(m)) pairs.push({ j, t, n }); });
-  pairs.sort((a, b) => b.n - a.n || a.j - b.j);
-  for (const p of pairs) { if (pick[p.j] || used.has(p.t)) continue; pick[p.j] = { team: p.t, held: p.n }; used.add(p.t); }
-  const spent = spentTeams(data, picks);
-  legs.forEach((l, j) => {
-    if (pick[j]) return;
-    const best = Object.keys(OPP[l.id]).filter((t) => !used.has(t) && !spent.has(t)).map((t) => ({ t, w: lineFor(l.id, t, data)?.win ?? 0 })).sort((a, b) => b.w - a.w)[0];
-    if (best) { pick[j] = { team: best.t, held: 0 }; used.add(best.t); }
-  });
+  const spent = spentTeams(data, picks), teams = ALL_TEAMS.filter((t) => !spent.has(t));
+  if (legs.length && teams.length >= legs.length) {
+    const cost = legs.map((l, j) => teams.map((t) => { const w = OPP[l.id][t] ? lineFor(l.id, t, data)?.win : null; return w ? -((byLeg[j][t] || 0) + 0.5 * w) : 1e6; }));
+    hungarian(cost).forEach((c, j) => { if (cost[j][c] < 1e6) { pick[j] = { team: teams[c], held: byLeg[j][teams[c]] || 0 }; used.add(teams[c]); } });
+  }
   const plan = legs.map((l, j) => {
     const p = pick[j], win = p ? lineFor(l.id, p.team, data)?.win ?? null : null;
     const alt = Object.entries(byLeg[j]).filter(([t]) => t !== p?.team && !used.has(t)).sort((a, b) => b[1] - a[1])[0] || null;
@@ -765,7 +763,7 @@ export function entryStatus(entry, actualLegs) {
   return { alive: true, leg: null };
 }
 
-export { modelPickRange, fvAt, bandError, strengthWeight, futureFor, marketLine, splashAnchor, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
+export { lineFor, modelPickRange, fvAt, bandError, strengthWeight, futureFor, marketLine, splashAnchor, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
 
 const CSS = `
 /* ---- tokens: paper, ink, one green ---- */

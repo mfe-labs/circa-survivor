@@ -1,5 +1,5 @@
 // DILI: EV net of what the team is worth to the rest of the entry's season (the map); and the futures-market prior.
-import { buildData, computeEV, computeDili, planMap, spentTeams, customSummary, fitParams, fvFor, strengthWeight, futureFor, diliPlan, consensusPlan, modelPick, marketLine } from "../src/CircaSurvivorPlanner.jsx";
+import { buildData, computeEV, computeDili, planMap, spentTeams, customSummary, fitParams, fvFor, strengthWeight, futureFor, diliPlan, consensusPlan, modelPick, marketLine, lineFor } from "../src/CircaSurvivorPlanner.jsx";
 import { priorFromFutures } from "../src/ratings.js";
 import { OPP, ALL_TEAMS, LEGS, TG_TEAMS, XM_TEAMS } from "../src/schedule.js";
 import picks from "../data/picks.json"; import actuals from "../data/actuals.json"; import odds from "../data/odds.json"; import ratings from "../data/ratings.json";
@@ -135,6 +135,7 @@ ok("future value on a readable scale", fvFor("W2", "KC", data) < 18 && fvFor("W2
   ok("DILI map's current week is the Planner's pick", dp.plan[0].team === top && Math.abs(dp.plan[0].dili - rows[top].dili) < 1e-9, `${leg}: ${dp.plan[0].team} vs ${top}`);
   ok("DILI map never reuses a spent team", dp.plan.every((p) => !spentTeams(real, e.picks).has(p.team)));
   ok("96 map fills every open week with distinct teams and counts out of 96", cp.plan.length === dp.plan.length && cp.plan.every((p) => p.team && p.held >= 0 && p.held <= 96) && new Set(cp.plan.map((p) => p.team)).size === cp.plan.length);
+  ok("96 map never takes an underdog over a stronger team it has free", cp.plan.every((p) => !p.team || p.win >= 0.5 || !Object.keys(OPP[p.leg.id]).some((t) => !cp.plan.some((q) => q.team === t) && !spentTeams(real, e.picks).has(t) && (lineFor(p.leg.id, t, real)?.win ?? 0) >= 0.6)), cp.plan.map((p) => `${p.leg.id} ${p.team} ${Math.round(100 * p.win)}%`).join(" "));
   ok("96 map's backup is never a team it uses elsewhere", cp.plan.every((p) => !p.backup || !cp.plan.some((q) => q.team === p.backup)));
   ok("both maps put eligible teams on the holidays", [dp, cp].every((m) => m.plan.every((p) => (p.leg.id !== "TG" || TG_TEAMS.has(p.team)) && (p.leg.id !== "XM" || XM_TEAMS.has(p.team)))));
   ok("both maps report a chance of winning out", dp.winOut > 0 && dp.winOut < 0.2 && cp.winOut > 0 && cp.winOut < 0.2, `DILI ${(100 * dp.winOut).toFixed(2)}% · 96 ${(100 * cp.winOut).toFixed(2)}%`);

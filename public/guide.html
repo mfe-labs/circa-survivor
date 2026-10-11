@@ -309,13 +309,13 @@ footer{border-top:1px solid var(--rule);margin-top:64px;padding-top:24px;font-si
 
 <h3>Why the forfeit is not the whole 13 points</h3>
 <p>A Week 16 line projected in September is a guess. Measured over seven seasons, projections like these miss the closing spread by about 3 points a month out and 6 points by December. So the map is solved 96 times with every future line jiggled by that much, and the forfeit is the average. In some of those seasons someone else is the best Week 16 option and the Ravens cost nothing; in others they are the only good one and cost a lot. That is also why holding two decent Christmas teams is worth more than one great one.</p>
-<p>The next four weeks go one step further and use each team's projected EV rather than its win chance, by running the pick-popularity model forward. A team most of the field burns this week becomes a quiet, valuable pick later, and the map knows it.</p>
+<p>The current week goes one step further and uses each team's EV rather than its win chance, so a team half the field is on counts for less. Later weeks use win chance alone: guesses about who the crowd picks a month from now are too lopsided to score on.</p>
 
 
 <h2 id="map">The Map tab<span class="q">The rest of the season, one row per week</span></h2>
 <p>Pick an entry and the Map tab lays out its whole season two ways, each on its own tab. Weeks already played are grayed out with the result.</p>
 <p><strong>Claude's DILI Map</strong> is the Planner's rule applied forward: score the next open week exactly as the Planner does, take the top DILI, spend that team, move on, repeat to the end, as if nothing changes. Its current week is always the Planner's pick. Each row shows the pick, its DILI, the second-best team with its DILI, and whether the call was close. Weeks beyond the next few have no field model yet, so they score on win chance against the forfeit, and the row says so.</p>
-<p><strong>Claude's 96 Map</strong> is the plan the jiggled seasons agree on. The season is solved 96 times with every future line nudged by its usual error, each team's count per week is tallied, and the plan is assembled in order of agreement so no team is used twice. "Held 29/96" means 29 of the 96 seasons put that team there; the backup is the runner-up by count. This tab changes slowly and tells you where the plan is sturdy and where it is a toss-up.</p>
+<p><strong>Claude's 96 Map</strong> is the plan the jiggled seasons agree on. The season is solved 96 times with every future line nudged by its usual error, each team's count per week is tallied, and the plan is the one assignment of a team to every week, no team twice, with the most total agreement. "Held 29/96" means 29 of the 96 seasons put that team there; the backup is the runner-up by count. This tab changes slowly and tells you where the plan is sturdy and where it is a toss-up.</p>
 <p>The two usually agree. They split on toss-up weeks, where the DILI map commits to one pick and the 96 map shows a low count, and that split is the information: use the DILI map to decide, the 96 map to see how sure the plan is.</p>
 <p>Across the top: the chance of winning every week on the map shown, its three weakest weeks, and the cheapest favorites to burn this week (on the DILI map, by what spending them costs this entry; on the 96 map, by how rarely a later week needs them).</p>
 
@@ -375,7 +375,7 @@ footer{border-top:1px solid var(--rule);margin-top:64px;padding-top:24px;font-si
 <ul>
 <li><strong>Distant weeks are rough.</strong> Next week's games usually have a look-ahead spread, which the app uses. Anything further out has no betting line anywhere free, so it is projected from power ratings that are deliberately cautious. Treat a Future value of 4.4 as "several good weeks", not as a precise count.</li>
 <li><strong>The map is a plan, not a prediction.</strong> It is re-solved every refresh from whatever the lines and ratings say that day, and it will change. Use it to see what a pick costs, not as a list of future picks.</li>
-<li><strong>It only guesses the crowd four weeks ahead.</strong> Pick popularity is projected forward that far; beyond it the field model drifts, so distant weeks use win chance alone.</li>
+<li><strong>It only guesses the crowd four weeks ahead.</strong> Pick popularity is projected forward that far for the DILI Map and the Future column; the season solver scores only the current week on the crowd, and every later week on win chance alone.</li>
 <li><strong>Circa's own prices are not available.</strong> The contest is run by a sportsbook whose odds are not published through any free feed, so W% comes from five other books.</li>
 <li><strong>It has no opinion about people.</strong> No injuries, no weather, no narratives. If a story matters, the betting market has already priced it, and if it has not, neither has this.</li>
 </ul>
