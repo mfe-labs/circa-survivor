@@ -955,18 +955,18 @@ const CSS = `
 .csp .strip .v.sm { font-size:15px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; min-height:26px; }
 .csp .strip .v.sm .mut { color:var(--ink3); font-weight:500; }
 .csp .mapv .lede { font-size:12px; color:var(--ink2); line-height:1.5; max-width:84ch; margin:0 0 10px; }
-.csp .maptabs { display:flex; align-items:flex-end; gap:3px; margin:12px 0 0; padding:0 8px; border-bottom:1px solid var(--rule2); }
-.csp .maptabs > .tab { position:relative; box-sizing:border-box; height:32px; line-height:30px; margin-bottom:-1px; padding:0 14px; font:inherit; font-size:13px; font-weight:500; color:var(--ink2); background:var(--panel); border:1px solid var(--rule2); border-bottom:none; border-radius:7px 7px 0 0; cursor:pointer; user-select:none; -webkit-user-select:none; white-space:nowrap; }
-.csp .maptabs > .tab::before { content:""; position:absolute; left:9px; right:9px; top:0; height:3px; border-radius:0 0 2px 2px; background:var(--rule2); }
-.csp .maptabs > .tab.claude::before { background:#A9D6AE; }
-.csp .maptabs > .tab:hover { color:var(--ink); background:var(--surface); }
-.csp .maptabs > .tab.on { color:var(--ink); font-weight:600; background:var(--paper); box-shadow:0 1px 0 var(--paper); z-index:1; }
+.csp .maptabs { display:flex; align-items:flex-end; gap:2px; margin:12px 0 0; padding:0 6px; border-bottom:1px solid var(--rule2); }
+.csp .maptabs > .tab { position:relative; display:flex; align-items:center; gap:8px; box-sizing:border-box; height:34px; margin-bottom:-1px; padding:0 14px 0 12px; font:inherit; font-size:13px; font-weight:500; color:var(--ink2); background:none; border:1px solid transparent; border-bottom:none; border-radius:8px 8px 0 0; cursor:pointer; user-select:none; -webkit-user-select:none; white-space:nowrap; }
+.csp .maptabs > .tab::before { content:""; flex:none; width:7px; height:7px; border-radius:50%; background:var(--rule2); }
+.csp .maptabs > .tab.claude::before { background:#A3D2A9; }
+.csp .maptabs > .tab:hover { color:var(--ink); background:var(--panel); }
+.csp .maptabs > .tab.on { color:var(--ink); font-weight:600; background:var(--surface); border-color:var(--rule2); box-shadow:0 1px 0 var(--surface); z-index:1; }
 .csp .maptabs > .tab.on::before { background:var(--ink3); }
 .csp .maptabs > .tab.claude.on::before { background:var(--green); }
 .csp .maptabs > .tab[draggable="true"] { cursor:grab; }
-.csp .maptabs > .tab.add { padding:0 11px; font-size:17px; font-weight:400; color:var(--ink3); background:none; border-color:transparent; }
+.csp .maptabs > .tab.add { padding:0 11px; font-size:17px; font-weight:400; color:var(--ink3); }
 .csp .maptabs > .tab.add::before { display:none; }
-.csp .maptabs > .tab.add:hover { color:var(--ink); background:var(--panel); border-color:var(--rule2); }
+.csp .maptabs > .tab.add:hover { color:var(--ink); }
 .csp .maptabs > .tab.drag { opacity:.4; }
 .csp .maptabs > .tab.ins-l { box-shadow:-3px 0 0 var(--ink); }
 .csp .maptabs > .tab.ins-r { box-shadow:3px 0 0 var(--ink); }
