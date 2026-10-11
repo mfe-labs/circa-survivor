@@ -398,7 +398,7 @@
    "fvAt": "2026-10-03T18:00:00.950Z"
   },
   "W5": {
-   "asOf": "Oct 11 (6 pending)",
+   "asOf": "Oct 11 (4 pending)",
    "picks": {
     "DAL": 2554,
     "HOU": 1228,
@@ -437,7 +437,8 @@
     "GB",
     "DEN",
     "PIT",
-    "MIN"
+    "MIN",
+    "SF"
    ],
    "lost": [
     "DAL",
@@ -447,6 +448,7 @@
     "CHI",
     "TEN",
     "NO",
+    "SEA",
     "NYG",
     "MIA",
     "NOPICK"
@@ -455,8 +457,6 @@
     "ATL",
     "LAR",
     "BUF",
-    "SEA",
-    "SF",
     "BAL"
    ],
    "source": "https://www.circasports.com/wp-content/uploads/2026/10/Circa-Survivor-2026-Week-5-Selections.pdf",
