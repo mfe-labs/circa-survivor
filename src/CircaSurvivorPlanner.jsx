@@ -960,6 +960,9 @@ const CSS = `
 .csp .maptabs > button:hover { color:var(--ink); }
 .csp .maptabs > button.on { color:var(--ink); border-bottom-color:var(--ink); font-weight:600; }
 .csp .maptabs > button.add { font-size:17px; font-weight:400; padding:0 12px; color:var(--ink3); }
+.csp .maptabs > button.drag { opacity:.4; }
+.csp .maptabs > button.ins-l { box-shadow:-2px 0 0 var(--ink); }
+.csp .maptabs > button.ins-r { box-shadow:2px 0 0 var(--ink); }
 .csp .maptabs .tabact { margin-left:auto; display:flex; gap:6px; align-self:center; }
 .csp .strip .v.bad { color:var(--red); }
 .csp .maptab .pc { display:inline-flex; align-items:center; height:22px; vertical-align:middle; }
@@ -1729,6 +1732,18 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
   const dili = useMemo(() => diliPlan(data, entry.picks, params), [data, entry, params]);
   const cons = useMemo(() => consensusPlan(data, entry.picks, params), [data, entry, params]);
   const [tab, setTab] = useState("dili");
+  // your own map tabs can be dragged into a new order; the order is saved with the maps
+  const [drag, setDrag] = useState(null), [over, setOver] = useState(null);
+  const dropAt = (e, m) => { e.preventDefault(); if (!drag || drag === m.id) return; const r = e.currentTarget.getBoundingClientRect(); setOver({ id: m.id, after: e.clientX > r.left + r.width / 2 }); };
+  const drop = () => {
+    if (drag && over && drag !== over.id) {
+      // reorder inside the full saved list (this tab only sees this entry's maps), so other entries' maps keep their place
+      const order = (all) => { const rest = all.filter((x) => x.id !== drag), at = rest.findIndex((x) => x.id === over.id) + (over.after ? 1 : 0); return [...rest.slice(0, at), all.find((x) => x.id === drag), ...rest.slice(at)]; };
+      const next = order(maps);
+      if (next.some((x, i) => x.id !== maps[i].id)) onMaps((m) => ({ ...m, maps: order(m.maps) }), `Map order: ${next.map((x) => x.name).join(", ")}`);
+    }
+    setDrag(null); setOver(null);
+  };
   const custom = maps.find((m) => m.id === tab) || null;
   const cs = useMemo(() => (custom ? customSummary(data, entry, custom, dili) : null), [data, entry, custom, dili]);
   if (status && !status.alive) return <div className="act mapv"><p className="lede">{entry.name} is out ({legLabel(status.leg)}). Nothing left to map.</p></div>;
@@ -1783,7 +1798,9 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
       <div className="maptabs">
         <button className={tab === "dili" ? "on" : ""} onClick={() => setTab("dili")} title="The Planner's pick each week, applied forward as if nothing changes">Claude's DILI Map</button>
         <button className={tab === "96" ? "on" : ""} onClick={() => setTab("96")} title="The plan the 96 jiggled seasons agree on">Claude's 96 Map</button>
-        {maps.map((m) => <button key={m.id} className={custom?.id === m.id ? "on" : ""} onClick={() => setTab(m.id)}>{m.name}</button>)}
+        {maps.map((m) => <button key={m.id} className={(custom?.id === m.id ? "on" : "") + (drag === m.id ? " drag" : "") + (over?.id === m.id && drag !== m.id ? (over.after ? " ins-r" : " ins-l") : "")} onClick={() => setTab(m.id)}
+          draggable={canEdit} onDragStart={(e) => { setDrag(m.id); e.dataTransfer.effectAllowed = "move"; }} onDragOver={(e) => dropAt(e, m)} onDragLeave={() => setOver((o) => (o?.id === m.id ? null : o))} onDrop={drop} onDragEnd={drop}
+          title={canEdit && maps.length > 1 ? "Drag to reorder" : undefined}>{m.name}</button>)}
         {canEdit && <button className="add" onClick={create} title="New map, starting from Claude's DILI Map">+</button>}
         {custom && canEdit && <span className="tabact"><button className="link" onClick={rename}>Rename</button><button className="link" onClick={remove}>Delete</button></span>}
       </div>
