@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { LEGS, ALL_TEAMS, OPP, TG_TEAMS, XM_TEAMS, legLabel } from "./schedule.js";
 import { HFA } from "./ratings.js";
 import { REPO, readFile, writeFile, whoAmI, dispatchWorkflow } from "./github.js";
-import { fetchSelections, fetchResults, legFromCirca } from "./circaLive.js";
+import { fetchSelections, fetchResults, legFromCirca, rescore } from "./circaLive.js";
 // Bundled copies of the data files (built into the site on every deploy). The page also re-reads the
 // live files from the repo on load so viewers see saves made since the last deploy.
 import picksBundled from "../data/picks.json";
@@ -1232,6 +1232,23 @@ export default function CircaSurvivorPlanner() {
     check();
     return () => { live = false; clearTimeout(timer); };
   }, [loaded, openId, openHas]); // eslint-disable-line
+  // ---- results while the week is being played ----
+  // With the picks in and games still pending, the page re-reads ESPN's scoreboard every ten minutes, so decided
+  // games flip to 100%/0% and the field's losses show as they happen. Signed in, it saves them too.
+  const pendingN = (files.actuals.json?.legs?.[openId]?.pending || []).length;
+  useEffect(() => {
+    if (!loaded || !openId || !openHas || !pendingN) return;
+    const leg = LEGS.find((l) => l.id === openId); if (Date.now() > legEnd(leg) + 2 * 86400e3) return;
+    let live = true, timer = null;
+    const poll = async () => {
+      const res = await fetchResults(openId); if (!live) return;
+      const next = rescore(filesRef.current.actuals.json?.legs?.[openId], res);
+      if (next) { setJson("actuals", (a) => ({ ...a, legs: { ...a.legs, [openId]: next } })); if (canEdit) setTimeout(() => save("actuals", `Actuals: ${legLabel(leg)} results (read by the app)`), 0); }
+      if (live && (next ? next.pending.length : true)) timer = setTimeout(poll, 10 * 60e3);
+    };
+    timer = setTimeout(poll, 8000);
+    return () => { live = false; clearTimeout(timer); };
+  }, [loaded, openId, openHas, pendingN]); // eslint-disable-line
 
   const signIn = () => { const t = tokenDraft.trim(); if (!t) return; try { localStorage.setItem(TOKEN_KEY, t); } catch {} setToken(t); setTokenDraft(""); setSignin(false); };
   const signOut = () => { try { localStorage.removeItem(TOKEN_KEY); } catch {} setToken(""); setUser(null); say("Signed out"); };

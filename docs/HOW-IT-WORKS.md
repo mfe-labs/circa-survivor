@@ -21,6 +21,8 @@ each with its own pick. Each team once per entry. Tie = loss. Schedule is hard-c
   dropdown says "Circa picks in" or "not posted yet · checked …". The results job also runs every ten minutes
   6–9 pm PT on Saturdays and, the first time a week's picks land, opens and closes a GitHub issue titled with the
   top five shares, which GitHub emails to the owner.
+- **Results while a week is played**: with picks in and games pending, the page re-reads ESPN every ten minutes
+  (`rescore`) and updates won/lost/pending in place, saving if signed in. The lines job also runs Saturday 1:17 pm PT.
 - **Splash** (`splash.json`, hand-entered from Jeremy's screenshots of the Splash x Polymarket $21M survivor, a
   $1,000 field of ~22,700): each complete week's pick counts, and for the current week the reading Splash shows the
   moment the Thursday game kicks off (`thursday.picks`, `alive`) plus that game's result (`final`). Read-only in the

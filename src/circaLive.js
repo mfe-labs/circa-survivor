@@ -58,6 +58,14 @@ export function legFromCirca(parsed, results, before, url, now = Date.now()) {
     const r = t === "NOPICK" ? "lost" : results?.[t] || "pending";
     (r === "won" ? won : r === "lost" ? lost : pending).push(t);
   }
-  const asOf = new Date(now).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Los_Angeles" }) + (pending.length ? ` (${pending.length} pending)` : " (final)");
-  return { asOf, picks, won, lost, pending, source: url };
+  return { asOf: asOfLabel(pending.length, now), picks, won, lost, pending, source: url };
+}
+export const asOfLabel = (pendingCount, now = Date.now()) => new Date(now).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Los_Angeles" }) + (pendingCount ? ` (${pendingCount} pending)` : " (final)");
+// Re-score a week's picks from the scoreboard. Returns the updated record, or null if nothing changed.
+export function rescore(leg, results) {
+  if (!leg || !results) return null;
+  const won = [], lost = [], pending = [];
+  for (const t of Object.keys(leg.picks)) { const r = t === "NOPICK" ? "lost" : results[t] || "pending"; (r === "won" ? won : r === "lost" ? lost : pending).push(t); }
+  if (won.length === leg.won.length && lost.length === leg.lost.length && pending.length === leg.pending.length) return null;
+  return { ...leg, won, lost, pending, asOf: asOfLabel(pending.length) };
 }

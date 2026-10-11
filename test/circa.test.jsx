@@ -1,6 +1,6 @@
 // Circa Selections PDF parser + ESPN results mapping.
 import { parseSelections, selectionFileNames, resultsFromScoreboard, espnWeek, NICK } from "../scripts/circa.mjs";
-import { legFromCirca } from "../src/circaLive.js";
+import { legFromCirca, rescore } from "../src/circaLive.js";
 let fails = 0; const ok = (name, cond, extra = "") => { console.log(name + ":", cond ? "OK" : "FAIL", extra); if (!cond) fails++; };
 
 const text = `Circa Survivor 2026
@@ -49,5 +49,8 @@ ok("game not in this leg ignored", res.DAL === undefined && res.MIA === undefine
   ok("no-picks are counted from the entries alive going in", e.picks.NOPICK === 18 && e.lost.includes("NOPICK"));
   ok("results sort into won/lost/pending", e.lost.includes("DAL") && e.pending.includes("HOU") && e.won.length === 0);
   ok("record looks like the job's", /^Oct 10 \(1 pending\)$/.test(e.asOf) && e.source === "https://x/w5.pdf");
+  const r2 = rescore(e, { DAL: "lost", HOU: "won" });
+  ok("a new result re-scores the week", r2 && r2.won.includes("HOU") && r2.pending.length === 0 && / \(final\)$/.test(r2.asOf));
+  ok("no change means no update", rescore(e, { DAL: "lost", HOU: "pending" }) === null);
 })();
 if (fails) { console.log(`${fails} FAILED`); process.exit(1); }
