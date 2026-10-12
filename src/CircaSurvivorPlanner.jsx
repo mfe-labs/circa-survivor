@@ -790,6 +790,7 @@ const CSS = `
 .csp .ctl .note { font-size:12px; color:var(--ink3); padding-right:6px; }
 .csp .ctl .note.msg { color:var(--ink); }
 .csp .ctl .note.err { color:var(--red); }
+.csp .note .sub { display:block; }
 .csp .who { font-size:12px; color:var(--ink2); }
 .csp .link { display:inline-block; background:none; border:none; padding:0 4px; font:inherit; font-size:12px; color:var(--ink2); cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
 .csp .link:hover { color:var(--ink); }
@@ -984,6 +985,7 @@ const CSS = `
 .csp .picker .pk.bad { border-color:var(--red); }
 .csp .picker .pk { position:relative; }
 .csp .picker .caret { position:absolute; left:calc(100% + 1px); top:50%; transform:translateY(-50%); font-size:10px; color:var(--ink3); }
+.csp .picker .offlock { position:absolute; left:calc(100% + 13px); top:50%; transform:translateY(-45%); color:var(--red); font-weight:700; font-size:15px; line-height:1; cursor:help; }
 .csp .picker .none { font-size:12px; color:var(--ink3); padding:0 6px; }
 .csp .picker .pop { position:absolute; z-index:20; top:calc(100% + 4px); left:0; width:250px; max-height:320px; overflow:auto; background:var(--surface); border:1px solid var(--rule2); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12); padding:4px; text-align:left; }
 .csp .picker .opt { display:grid; grid-template-columns:40px 1fr 36px 58px; align-items:center; gap:6px; width:100%; padding:4px 6px; border:none; border-radius:5px; background:none; font:inherit; font-size:12px; color:var(--ink); cursor:pointer; text-align:left; }
@@ -1434,6 +1436,7 @@ export default function CircaSurvivorPlanner() {
     if (circaLive?.legId === legId) return circaLive.status === "checking" ? "Checking Circa for the picks…" : `Circa picks not posted yet · checked ${fmtTime(new Date(circaLive.at).toISOString())}`;
     return null;
   })();
+  const pulled = data.oddsAt ? `Lines updated ${fmtTime(data.oddsAt)}` : null;
   const lineNote = (() => {
     if (circaNote) return circaNote;
     if (!legInfo) return "No lines yet for this week";
@@ -1442,7 +1445,7 @@ export default function CircaSurvivorPlanner() {
     for (const g of Object.values(legInfo.detail)) for (const r of g.rows) if (!r.excluded) books.add(r.book);
     const real = [...books].filter((b) => b !== "nflverse").length;
     if (legInfo.counts.closing) return `Closing lines · ${legInfo.games}/${legInfo.gamesTotal} games`;      // week already played
-    return `Lines updated ${fmtTime(legInfo.asof)} · ${real} sportsbook${real === 1 ? "" : "s"}`;
+    return `${real} sportsbook${real === 1 ? "" : "s"} · ${legInfo.games}/${legInfo.gamesTotal} games`;
   })();
 
   return (
@@ -1505,7 +1508,7 @@ export default function CircaSurvivorPlanner() {
             </div>
             <div className="row">
               {canEdit && <button className="btn" onClick={updateLines} disabled={updating} title="Pull fresh moneylines from the sportsbooks now (otherwise twice a day)">{updating ? "Updating…" : "Update lines"}</button>}
-              <span className={"note" + (status ? (statusErr ? " err" : " msg") : "")} title={!status ? `Lines update automatically twice a day. ${stamp}` : undefined}>{!loaded ? "Loading…" : status || lineNote}</span>
+              <span className={"note" + (status ? (statusErr ? " err" : " msg") : "")} title={!status ? `Lines update automatically twice a day. ${stamp}` : undefined}>{!loaded ? "Loading…" : status || <>{lineNote}{pulled && <span className="sub">{pulled}</span>}</>}</span>
             </div>
           </div>
         </div>
@@ -1719,7 +1722,8 @@ export function customSummary(data, entry, map, res) {
 }
 // Pick control for a saved map: the team chip plus a short list of that week's teams by win %, anything already
 // on the map or spent crossed out but still pickable.
-function PickPicker({ legId, team, data, usedAt, onPick, canEdit, conflict }) {
+function PickPicker({ legId, team, data, usedAt, onPick, canEdit, conflict, lock }) {
+  const off = team && lock && team !== lock ? <span className="offlock" title={`Claude Locks has ${lock} this week`}>*</span> : null;
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -1730,12 +1734,13 @@ function PickPicker({ legId, team, data, usedAt, onPick, canEdit, conflict }) {
     return () => { document.removeEventListener("mousedown", out); document.removeEventListener("keydown", esc); };
   }, [open]);
   const opts = Object.keys(OPP[legId]).map((t) => ({ t, win: lineFor(legId, t, data)?.win ?? null })).sort((a, b) => (b.win ?? 0) - (a.win ?? 0));
-  if (!canEdit) return <span className="pc">{team ? teamChip(team) : <span className="mut">–</span>}</span>;
+  if (!canEdit) return <span className="pc picker">{team ? teamChip(team) : <span className="mut">–</span>}{off && <span className="caret" style={{ visibility: "hidden" }}>▾</span>}{off}</span>;
   return (
     <span className="picker pc" ref={ref}>
       <button className={"pk" + (conflict ? " bad" : "")} onClick={() => setOpen((o) => !o)} title="Change this week's pick">
         {team ? teamChip(team) : <span className="none">pick</span>}<span className="caret">▾</span>
       </button>
+      {off}
       {open && <div className="pop" role="listbox">
         {opts.map((o) => { const w = usedAt(o.t, legId); return (
           <button key={o.t} className={"opt" + (w ? " used" : "") + (o.t === team ? " on" : "")} onClick={() => { onPick(o.t); setOpen(false); }}>
@@ -1764,6 +1769,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
   };
   const custom = maps.find((m) => m.id === tab) || null;
   const cs = useMemo(() => (custom ? customSummary(data, entry, custom, dili) : null), [data, entry, custom, dili]);
+  const lockAt = useMemo(() => locksPicks(dili, cons), [dili, cons]);
   const locks = useMemo(() => { const lk = customSummary(data, entry, { picks: locksPicks(dili, cons) }, dili), filled = lk.rows.filter((r) => r.team && r.win != null); return { ...lk, filled: filled.length, winOut: filled.reduce((x, r) => x * r.win, 1) }; }, [data, entry, dili, cons]);
   if (status && !status.alive) return <div className="act mapv"><p className="lede">{entry.name} is out ({legLabel(status.leg)}). Nothing left to map.</p></div>;
   const res = tab === "96" ? cons : dili;
@@ -1868,7 +1874,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
               return (
                 <tr key={l.id} className={cls + (r.conflict ? " conflict" : "")}>
                   <td>{legLabel(l)}</td>
-                  <td><PickPicker legId={l.id} team={r.team} data={data} usedAt={cs.usedAt} onPick={(t) => setMapPick(l.id, t)} canEdit={canEdit} conflict={r.conflict} /></td>
+                  <td><PickPicker legId={l.id} team={r.team} data={data} usedAt={cs.usedAt} onPick={(t) => setMapPick(l.id, t)} canEdit={canEdit} conflict={r.conflict} lock={lockAt[l.id]} /></td>
                   <td>{r.team ? gameText(l.id, r.team, data) : ""}</td>
                   <td className={r.win != null && r.win < 0.6 ? "weak" : ""}>{pct0(r.win)}</td>
                   <td></td><td></td>
