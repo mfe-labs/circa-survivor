@@ -986,6 +986,7 @@ const CSS = `
 .csp .picker .pk { position:relative; }
 .csp .picker .caret { position:absolute; left:calc(100% + 1px); top:50%; transform:translateY(-50%); font-size:10px; color:var(--ink3); }
 .csp .picker .offlock { position:absolute; left:calc(100% + 13px); top:50%; transform:translateY(-45%); color:var(--red); font-weight:700; font-size:15px; line-height:1; cursor:help; }
+.csp .picker .offlock.open { color:var(--sel-line); }
 .csp .picker .none { font-size:12px; color:var(--ink3); padding:0 6px; }
 .csp .picker .pop { position:absolute; z-index:20; top:calc(100% + 4px); left:0; width:250px; max-height:320px; overflow:auto; background:var(--surface); border:1px solid var(--rule2); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12); padding:4px; text-align:left; }
 .csp .picker .opt { display:grid; grid-template-columns:40px 1fr 36px 58px; align-items:center; gap:6px; width:100%; padding:4px 6px; border:none; border-radius:5px; background:none; font:inherit; font-size:12px; color:var(--ink); cursor:pointer; text-align:left; }
@@ -1723,7 +1724,8 @@ export function customSummary(data, entry, map, res) {
 // Pick control for a saved map: the team chip plus a short list of that week's teams by win %, anything already
 // on the map or spent crossed out but still pickable.
 function PickPicker({ legId, team, data, usedAt, onPick, canEdit, conflict, lock }) {
-  const off = team && lock && team !== lock ? <span className="offlock" title={`Claude Locks has ${lock} this week`}>*</span> : null;
+  // red: Claude Locks has a different team this week; light blue: Claude Locks has nothing this week (its two maps disagree)
+  const off = !team || team === lock ? null : lock ? <span className="offlock" title={`Claude Locks has ${lock} this week`}>*</span> : <span className="offlock open" title="Claude Locks has no pick this week: the two Claude maps disagree">*</span>;
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
