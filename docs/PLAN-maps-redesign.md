@@ -88,4 +88,12 @@ between the two new maps.
 - 2026-10-13: plan agreed. Rule map built as a fourth Claude tab alongside the old maps (step 1 done); today the
   holdback (PHI, CHI, BUF) costs 0% of win-out because the survival plan does not spend them early anyway; holding a
   fourth would cost 20%. In the plan, held teams stay unused until Christmas; the rule stops constraining decisions
-  once Thanksgiving is played (the maps then re-plan on real lines). Next: step 2, drift model + playout engine.
+  once Thanksgiving is played (the maps then re-plan on real lines). Steps 2–3 done the same day: engine in src/simulate.js (+ solver.js, sim.worker.js), 12 engine tests on hand-built
+  seasons, Claude Simulation Map as a fifth Claude tab alongside the old maps, playout forfeit beside the current one
+  in the Planner's DILI tooltips and Model details. First comparison (Week 6, 2026-10-13): playout forfeits correlate
+  0.92 with the current forfeits over 25 teams; the top of the board moves a little (LAR 0.89 over NE 0.82 by the
+  playouts vs NE 0.88 over LAR 0.87 today: the playouts value NE and IND more later, and give LAR's Week 6 line its
+  due). Seed wobble at 128 playouts was ±0.04, too much; antithetic pairs + 512 playouts bring it to ±0.01. The
+  Simulation map's win-out (3.4%) is an expectation with the lines moving and each week re-picked, so it is not
+  comparable to the other maps' 1.4% product of today's lines; labeled as such. Next: compare through Week 7 before
+  step 4 (replace the old maps) and step 5 (forfeit switch).

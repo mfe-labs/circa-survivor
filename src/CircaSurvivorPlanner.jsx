@@ -3,6 +3,7 @@ import { LEGS, ALL_TEAMS, OPP, TG_TEAMS, XM_TEAMS, legLabel, REST_PTS, restEdge 
 import { HFA } from "./ratings.js";
 import { REPO, readFile, writeFile, whoAmI, dispatchWorkflow } from "./github.js";
 import { fetchSelections, fetchResults, legFromCirca, rescore } from "./circaLive.js";
+import { scoreCandidates, SIM_PLAYOUTS, SIM_SEED } from "./simulate.js";
 // Bundled copies of the data files (built into the site on every deploy). The page also re-reads the
 // live files from the repo on load so viewers see saves made since the last deploy.
 import picksBundled from "../data/picks.json";
@@ -288,6 +289,10 @@ const MAP_SAMPLES = 96;                     // noisy seasons averaged per forfei
 const MAP_FLOOR = 0.02;                     // "win chance" of a leg with nothing to pick: a forfeit, near-certain loss
 const MARGIN_SD = 11.5;                     // points of spread per unit of win-chance z: Φ(spread ÷ 11.5) matches closing moneylines (2024–26, 637 games, 1.9 pts rms; 13.5 was 3.2 and understated big favorites by 3–4 pts)
 const noiseSd = (lead, market) => (market ? 1.5 : 3 + 0.25 * lead) / MARGIN_SD;
+// the playout engine's view of the schedule: each leg's opponent index per team (−1 = no game) and how much a line
+// can still move when it is `lead` legs away (market-sized for the next leg, projected beyond)
+const SIM_OPP = LEGS.map((l) => Int32Array.from(ALL_TEAMS, (t) => (OPP[l.id][t] ? ALL_TEAMS.indexOf(OPP[l.id][t].opp) : -1)));
+const SIM_SD = (lead) => noiseSd(lead, lead === 1);
 const probit = (p) => { let lo = -6, hi = 6; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (normCdf(m) < p) lo = m; else hi = m; } return (lo + hi) / 2; };
 function seededRng(seed) { return () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 const gauss = (r) => { let u = 0, v = 0; while (!u) u = r(); while (!v) v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
@@ -612,6 +617,71 @@ export function rulesPlan(data, picks, params = PRIOR, hold = RULE_HOLD) {
   const freePath = cur ? survivalPath(tab, rest, bi2) : [];
   const freeWinOut = cur && freePath.every((q) => q.team) ? plan[0].win * freePath.reduce((x, q) => x * q.win, 1) : null;
   return { plan, currentLeg: LEGS[tab.nowIdx] || null, winOut, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), cheap, held, pair, active, hold: n, pool, freeWinOut };
+}
+// Claude Simulation Map (docs/PLAN-maps-redesign.md): what the model would do if it decided for itself, with
+// optionality priced by the playout engine in simulate.js. Every team with a game this week is scored by the chance
+// of winning out if it is spent now and the rest of the season is then picked one week at a time as the lines move.
+// This week's pick is the Planner's rule, EV ÷ forfeit, with the forfeit from the playouts (the base survival of
+// the later weeks ÷ the survival with the team spent). Later rows show the team the playouts used most often in that
+// week, with the share; the Christmas row shows the spread of options the plan keeps.
+const simKey = (spent, params, n) => `${[...spent].sort().join(",")}|${params.a}|${params.b}|${params.c ?? 0}|${n}`;
+function simInputs(data, picks, params, n) {
+  const spent = spentTeams(data, picks), tab = seasonTable(data, params), legIdx = mapLegs(tab, null);
+  if (!legIdx.length) return null;
+  const burned = ALL_TEAMS.map((t) => (spent.has(t) ? 1 : 0)), now = legIdx[0];
+  const candidates = ALL_TEAMS.map((t, i) => i).filter((i) => !burned[i] && !Number.isNaN(tab.z[now][i]));
+  const sdByLead = Array.from({ length: 24 }, (_, L) => (L === 0 ? 0 : SIM_SD(L)));
+  return { key: simKey(spent, params, n), spent, tab, legIdx, msg: { z: legIdx.map((k) => tab.z[k]), zKeys: legIdx, ff: tab.ff[now], legs: legIdx, nTeams: ALL_TEAMS.length, burned, sdByLead, opp: legIdx.map((k) => SIM_OPP[k]), candidates, n, seed: SIM_SEED } };
+}
+// the worker gets rows keyed by leg index; rebuild that shape for the engine
+const simArgs = (m) => { const z = {}, ff = {}, opp = {}; m.zKeys.forEach((k, j) => { z[k] = m.z[j]; opp[k] = m.opp[j]; }); ff[m.legs[0]] = m.ff; return { z, ff, legs: m.legs, nTeams: m.nTeams, burned: m.burned, sdLead: (L) => m.sdByLead[Math.min(L, m.sdByLead.length - 1)], opp, candidates: m.candidates, n: m.n, seed: m.seed }; };
+function simFromScores(data, picks, params, inp, sc) {
+  const { spent, tab, legIdx, msg } = inp, n = msg.n, now = legIdx[0];
+  const empty = { plan: [], currentLeg: null, winOut: 0, weakest: [], rows: {}, base: 1, samples: n, xmas: [] };
+  const cur = scoreCurrentWeek(data, params, tab, new Set(spent), new Set());
+  const rows = {};
+  for (const [i, r] of Object.entries(sc.teams)) {
+    const t = ALL_TEAMS[i], cr = cur?.rows[t]; if (cr && cr.ev == null) continue;   // decided games are not candidates
+    const ev = cr?.ev ?? r.win, forfeit = Math.max(1, r.forfeit);
+    rows[t] = { win: cr?.win ?? r.win, ev, forfeit, rest: r.rest, dili: ev / forfeit, usage: r.usage, oldForfeit: cr?.forfeit ?? null };
+  }
+  const order = Object.keys(rows).sort((a, b) => rows[b].dili - rows[a].dili), [t1, t2] = order;
+  if (!t1) return empty;
+  const r1 = rows[t1], r2 = t2 ? rows[t2] : null, l0 = LEGS[now], plan = [];
+  plan.push({ leg: l0, team: t1, win: r1.win, dili: r1.dili, forfeit: r1.forfeit, backup: t2 || null, backupWin: r2?.win ?? null, backupDili: r2?.dili ?? null, ev: true, held: 1, samples: n, ...holidayPool(l0, spent) });
+  const before = new Set([...spent, t1]);
+  // later rows read as one path: each week shows the most-used team not already shown in an earlier row (the
+  // playouts are many different paths, so the raw per-week favorites can repeat a team)
+  legIdx.slice(1).forEach((k, j) => {
+    const l = LEGS[k], u = r1.usage[j], top = ALL_TEAMS.map((t, i) => [t, u[i]]).filter(([, x]) => x > 0).sort((a, b) => b[1] - a[1]);
+    const free = top.filter(([t]) => !before.has(t)), [team, share] = free[0] || [null, 0], alt = free[1] || null;
+    plan.push({ leg: l, team, win: team ? lineFor(l.id, team, data)?.win ?? null : null, dili: null, forfeit: null, backup: alt ? alt[0] : null, backupWin: alt ? lineFor(l.id, alt[0], data)?.win ?? null : null, backupDili: null, backupHeld: alt ? alt[1] : 0, ev: false, planned: true, held: share, samples: n, options: top.slice(0, 4), ...holidayPool(l, before) });
+    if (team) before.add(team);
+  });
+  const live = plan.filter((p) => p.team), xm = plan.find((p) => p.leg.id === "XM");
+  return { plan, currentLeg: l0, winOut: r1.win * r1.rest, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), rows, base: sc.base, samples: n, xmas: xm?.options || [] };
+}
+// synchronous version (tests, and the fallback when workers are unavailable)
+export function simPlan(data, picks, params = PRIOR, n = SIM_PLAYOUTS) {
+  const inp = simInputs(data, picks, params, n);
+  if (!inp) return { plan: [], currentLeg: null, winOut: 0, weakest: [], rows: {}, base: 1, samples: n, xmas: [] };
+  return cached(data, "sim", inp.key, () => simFromScores(data, picks, params, inp, scoreCandidates(simArgs(inp.msg))));
+}
+// the page's version: the engine runs in a worker, the hook returns null until the scores are back
+const simStore = new Map(); let simWorker = null, simSeq = 0;
+function useSimPlan(data, picks, params, n = SIM_PLAYOUTS) {
+  const inp = useMemo(() => simInputs(data, picks, params, n), [data, picks, params, n]);
+  const key = inp?.key || "", [, bump] = useState(0);
+  useEffect(() => {
+    if (!inp || simStore.has(key)) return;
+    if (typeof Worker === "undefined") { simStore.set(key, simFromScores(data, picks, params, inp, scoreCandidates(simArgs(inp.msg)))); bump((x) => x + 1); return; }
+    if (!simWorker) simWorker = new Worker(new URL("./sim.worker.js", import.meta.url), { type: "module" });
+    const id = ++simSeq, onMsg = (e) => { if (e.data.id !== id) return; simWorker.removeEventListener("message", onMsg); simStore.set(key, simFromScores(data, picks, params, inp, e.data)); bump((x) => x + 1); };
+    simWorker.addEventListener("message", onMsg);
+    simWorker.postMessage({ id, ...inp.msg });
+    return () => simWorker?.removeEventListener("message", onMsg);
+  }, [inp, key]);
+  return inp ? simStore.get(key) || null : { plan: [], currentLeg: null, winOut: 0, weakest: [], rows: {}, base: 1, samples: n, xmas: [] };
 }
 // Claude's 96 Map: the plan with the best chance of winning every week across the jiggled seasons (survivalPath),
 // with the 96 noisy solves supplying how often each pick held its week. It used to be assembled from those votes,
@@ -1425,6 +1495,8 @@ export default function CircaSurvivorPlanner() {
   const usedBy = useMemo(() => { const m = {}; for (const [leg, team] of Object.entries(entry.picks)) m[team] = leg; return m; }, [entry]);
 
   const params = useMemo(() => fitParams(data), [data]);
+  // the playout forfeit beside the current one, for the comparison phase (tooltips and Model details only)
+  const simNow = useSimPlan(data, entry?.picks, params), simRows = entry && legId === LEGS[lockedIdx(data)]?.id && simNow ? simNow.rows : {};
   const merr = useMemo(() => modelError(data, params), [data, params]);
   // per-team stats for selected leg (also computed on the previous refresh's data, for the deltas)
   const burned = useMemo(() => { const b = spentTeams(data, entry.picks); b.delete(entry.picks[legId]); return b; }, [data, entry, legId]);
@@ -1464,10 +1536,10 @@ export default function CircaSurvivorPlanner() {
   };
   // number stays centered in the column; the delta sits in the space to its right
   const Num = ({ children, d, kind }) => <span className="v"><span className="n">{children}</span><Delta v={d} kind={kind} /></span>;
-  const diliTip = (st) => {
+  const diliTip = (st, t) => {
     if (st.deadLeg) return `Burning this team leaves nothing eligible for ${legLabel(st.deadLeg)}: DILI 0`;
     const swaps = (st.swaps || []).map((p) => `${legLabel(p.leg)} ${p.from} ${pct(p.fromWin)} → ${p.to} ${pct(p.toWin)}`).join(", ");
-    const parts = st.forfeitMap != null && st.strengthW > 0 ? ` (map ${st.forfeitMap.toFixed(2)}, strength ${st.forfeitStr.toFixed(2)} at ${Math.round(100 * st.strengthW)}%)` : "";
+    const parts = (st.forfeitMap != null && st.strengthW > 0 ? ` (map ${st.forfeitMap.toFixed(2)}, strength ${st.forfeitStr.toFixed(2)} at ${Math.round(100 * st.strengthW)}%)` : "") + (simRows[t]?.forfeit != null ? ` · playout forfeit ${simRows[t].forfeit.toFixed(2)} would give DILI ${simRows[t].dili.toFixed(2)}` : "");
     return `EV ${st.ev.toFixed(2)} ÷ forfeit ${st.forfeit.toFixed(2)}${parts} = ${st.dili.toFixed(2)}${st.diliLo != null ? ` (likely ${st.diliLo.toFixed(2)}–${st.diliHi.toFixed(2)} at lock (middle half of outcomes))` : ""} · ${swaps ? `burning it changes your map: ${swaps}` : "not on your projected map, so the forfeit is only the chance it turns into a spot later"}${st.dDili != null ? dTip("was", (st.dili - st.dDili).toFixed(2)) : ""}`;
   };
   const dTip = (label, was) => (prevAt ? ` · ${label} ${was} at the previous refresh (${fmtTime(prevAt)})` : "");
@@ -1677,7 +1749,7 @@ export default function CircaSurvivorPlanner() {
                     <span className="v"><span className="n">{st.fv == null ? "–" : st.fv.toFixed(1)}</span></span>
                   </td>
                   <td className={"L ev num" + (st.ev == null ? " blank" : st.evTop ? " hi" : "")} title={st.ev != null ? `EV ${st.ev.toFixed(2)}${st.evLo != null ? ` · likely ${st.evLo.toFixed(2)}–${st.evHi.toFixed(2)} at lock (middle half of outcomes)` : ""}${st.dEv != null ? dTip("was", (st.ev - st.dEv).toFixed(2)) : ""}` : ""}><Num d={st.dEv} kind="ev">{st.ev == null ? "–" : st.ev.toFixed(2)}</Num></td>
-                  <td className={"L dili num" + (st.dili == null ? " blank" : st.diliTop ? " hi" : "")} title={st.dili == null ? (!inLeg ? "No game this week" : usedLeg && usedLeg !== legId ? `Already used in ${legLabel(LEGS.find((x) => x.id === usedLeg))}` : st.final ? "Game is over" : "Needs an EV") : diliTip(st)}>
+                  <td className={"L dili num" + (st.dili == null ? " blank" : st.diliTop ? " hi" : "")} title={st.dili == null ? (!inLeg ? "No game this week" : usedLeg && usedLeg !== legId ? `Already used in ${legLabel(LEGS.find((x) => x.id === usedLeg))}` : st.final ? "Game is over" : "Needs an EV") : diliTip(st, team)}>
                     <Num d={st.dDili} kind="ev">{st.dili == null ? (!inLeg ? "no game" : usedLeg && usedLeg !== legId ? "used" : "–") : st.dili.toFixed(2)}</Num>
                   </td>
                   <td className="L team" style={{ "--tc": COLORS[team][0] }}>
@@ -1768,7 +1840,7 @@ function AuditPanel({ legId, data, params, merr, stats, evNote, map }) {
               <td className="mut">{pc(stats[t].pm, 1)}</td>
               <td>{pc(stats[t].pick, 1)}</td>
               <td>{stats[t].ev == null ? "–" : stats[t].ev.toFixed(2)}</td>
-              <td className="mut" title={(stats[t].forfeitMap != null ? `map ${stats[t].forfeitMap.toFixed(3)} · strength ${stats[t].forfeitStr.toFixed(3)} at ${Math.round(100 * stats[t].strengthW)}%` : "") + ((stats[t].swaps || []).length ? " · " + stats[t].swaps.map((p) => `${legLabel(p.leg)} ${p.from} → ${p.to}`).join(", ") : "")}>{stats[t].forfeit == null ? "–" : stats[t].forfeit === Infinity ? "∞" : stats[t].forfeit.toFixed(3)}</td>
+              <td className="mut" title={(stats[t].forfeitMap != null ? `map ${stats[t].forfeitMap.toFixed(3)} · strength ${stats[t].forfeitStr.toFixed(3)} at ${Math.round(100 * stats[t].strengthW)}%` : "") + (simRows[t]?.forfeit != null ? ` · playout ${simRows[t].forfeit.toFixed(3)}` : "") + ((stats[t].swaps || []).length ? " · " + stats[t].swaps.map((p) => `${legLabel(p.leg)} ${p.from} → ${p.to}`).join(", ") : "")}>{stats[t].forfeit == null ? "–" : stats[t].forfeit === Infinity ? "∞" : stats[t].forfeit.toFixed(3)}</td>
               <td className="fin">{stats[t].dili == null ? "–" : stats[t].dili.toFixed(2)}</td>
             </tr>
           ))}
@@ -1885,6 +1957,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
   const dili = useMemo(() => diliPlan(data, entry.picks, params), [data, entry, params]);
   const cons = useMemo(() => consensusPlan(data, entry.picks, params), [data, entry, params]);
   const rules = useMemo(() => rulesPlan(data, entry.picks, params), [data, entry, params]);
+  const sim = useSimPlan(data, entry.picks, params);   // null while the worker is still running the playouts
   const [tab, setTab] = useState("dili");
   // your own map tabs can be dragged into a new order; the order is saved with the maps
   const [drag, setDrag] = useState(null), [over, setOver] = useState(null);
@@ -1903,7 +1976,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
   const lockAt = useMemo(() => locksPicks(dili, cons), [dili, cons]);
   const locks = useMemo(() => { const lk = customSummary(data, entry, { picks: locksPicks(dili, cons) }, dili), filled = lk.rows.filter((r) => r.team && r.win != null); return { ...lk, filled: filled.length, winOut: filled.reduce((x, r) => x * r.win, 1) }; }, [data, entry, dili, cons]);
   if (status && !status.alive) return <div className="act mapv"><p className="lede">{entry.name} is out ({legLabel(status.leg)}). Nothing left to map.</p></div>;
-  const res = tab === "96" ? cons : tab === "rules" ? rules : dili;
+  const res = tab === "96" ? cons : tab === "rules" ? rules : tab === "sim" ? (sim || { plan: [], winOut: 0, weakest: [], currentLeg: dili.currentLeg, xmas: [], samples: SIM_PLAYOUTS }) : dili;
   const planned = Object.fromEntries(res.plan.map((p) => [p.leg.id, p]));
   const planWeek = Object.fromEntries(res.plan.filter((p) => p.team).map((p) => [p.team, p.leg]));
   const nowId = dili.currentLeg?.id;
@@ -1935,6 +2008,8 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
         cheapCap: (lg) => `free to burn in ${lg}: favorites (win %) not locked for a later week` }
     : tab === "rules"
     ? { winOut: rules.winOut, weakest: rules.weakest, cheapLeg: rules.currentLeg, rule: true }
+    : tab === "sim"
+    ? { winOut: res.winOut || null, winNote: sim ? null : "running the playouts…", winCap: "expected chance of winning every week, with the lines free to move and each week re-picked as they do", weakest: res.weakest, cheapLeg: res.currentLeg, simBox: true }
     : tab === "96"
     ? { winOut: cons.winOut, weakest: cons.weakest, cheapLeg: cons.nowLeg,
         cheap: cons.free.map((f) => <span key={f.team} title={`${f.team} is ${pct0(f.win)} to win this week and gets used in a later week in ${Math.round(100 * f.onMap)}% of the ${cons.samples} seasons`}>{teamChip(f.team, true)} <span className="mut">({pct0(f.win)})</span> {pct0(f.onMap)}</span>),
@@ -1961,6 +2036,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
         <div role="button" tabIndex={0} className={"tab claude" + (tab === "dili" ? " on" : "")} onClick={() => setTab("dili")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("dili"); } }} title="The Planner's pick each week, applied forward as if nothing changes">Claude's DILI Map</div>
         <div role="button" tabIndex={0} className={"tab claude" + (tab === "96" ? " on" : "")} onClick={() => setTab("96")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("96"); } }} title="The plan the 96 jiggled seasons agree on">Claude's 96 Map</div>
         <div role="button" tabIndex={0} className={"tab claude" + (tab === "rules" ? " on" : "")} onClick={() => setTab("rules")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("rules"); } }} title="Hold three Christmas teams until Thanksgiving is played, then plan for survival">Claude Rules Map</div>
+        <div role="button" tabIndex={0} className={"tab claude" + (tab === "sim" ? " on" : "")} onClick={() => setTab("sim")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("sim"); } }} title="Lines move and each week is re-picked as they do: the pick that wins out most often across the playouts">Claude Simulation Map</div>
         <div role="button" tabIndex={0} className={"tab claude" + (tab === "locks" ? " on" : "")} onClick={() => setTab("locks")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("locks"); } }} title="The weeks where both Claude maps name the same team; the rest left empty">Claude Locks</div>
         {maps.map((m) => <div key={m.id} role="button" tabIndex={0} className={"tab" + (custom?.id === m.id ? " on" : "") + (drag === m.id ? " drag" : "") + (over?.id === m.id && drag !== m.id ? (over.after ? " ins-r" : " ins-l") : "")} onClick={() => setTab(m.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab(m.id); } }}
           draggable={canEdit} onDragStart={(e) => { e.dataTransfer.setData("text/plain", m.id); e.dataTransfer.effectAllowed = "move"; setDrag(m.id); }} onDragEnter={(e) => e.preventDefault()} onDragOver={(e) => dropAt(e, m)} onDrop={(e) => { e.preventDefault(); drop(); }} onDragEnd={() => { setDrag(null); setOver(null); }}
@@ -1971,7 +2047,8 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
       <div className="strip">
         <div className="fig"><div className={"v" + (box.winOut == null && box.winNote ? " bad" : "")}>{box.winOut != null ? (100 * box.winOut).toFixed(1) + "%" : box.winNote ? "not valid" : "–"}</div><div className="k">{box.winOut == null && box.winNote ? box.winNote : box.winCap || "chance of winning every week on this map"}</div></div>
         <div className="fig"><div className="v sm">{box.weakest.map((p) => <span key={p.leg.id}>{shortLeg(p.leg)} {pct0(p.win)}</span>)}</div><div className="k">weakest weeks, where the entry most likely dies</div></div>
-        {box.rule ? <div className="fig"><div className="v sm">{rules.held.length ? rules.held.map((t) => <span key={t}>{teamChip(t, true)}</span>) : "none"}{rules.freeWinOut != null && rules.winOut > 0 && <span className="mut"> costs {Math.max(0, Math.round(100 * (1 - rules.winOut / rules.freeWinOut)))}% of win-out</span>}</div><div className="k">{rules.active ? `held for Christmas until Thanksgiving is played${rules.pair ? ", both sides of one game" : ""}; what the holdback costs against the unconstrained plan` : rules.pool.length ? "Thanksgiving is played: nothing held, the rule has lifted" : "no Christmas teams left to hold"}</div></div>
+        {box.simBox ? <div className="fig"><div className="v sm">{res.xmas.length ? res.xmas.map(([t, x]) => <span key={t}>{teamChip(t, true)} <span className="mut">{pct0(x)}</span></span>) : "–"}</div><div className="k">Christmas: which team the playouts ended up using there, and how often (the options the plan keeps open)</div></div>
+        : box.rule ? <div className="fig"><div className="v sm">{rules.held.length ? rules.held.map((t) => <span key={t}>{teamChip(t, true)}</span>) : "none"}{rules.freeWinOut != null && rules.winOut > 0 && <span className="mut"> costs {Math.max(0, Math.round(100 * (1 - rules.winOut / rules.freeWinOut)))}% of win-out</span>}</div><div className="k">{rules.active ? `held for Christmas until Thanksgiving is played${rules.pair ? ", both sides of one game" : ""}; what the holdback costs against the unconstrained plan` : rules.pool.length ? "Thanksgiving is played: nothing held, the rule has lifted" : "no Christmas teams left to hold"}</div></div>
         : box.cheapLeg && <div className="fig"><div className="v sm">{box.cheap.length ? box.cheap : "none"}</div><div className="k">{box.cheapCap(legLabel(box.cheapLeg))}</div></div>}
       </div>
       <table className="dist maptab">
@@ -1979,10 +2056,13 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
           ? <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th></th><th></th><th>Notes</th></tr>
           : tab === "locks"
           ? <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title="What Claude's DILI Map has for this week">DILI Map</th><th title="What Claude's 96 Map has for this week">96 Map</th><th>Notes</th></tr>
+          : tab === "sim"
+          ? <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title={`This week: EV ÷ the playout forfeit. Later weeks: the share of ${res.samples} playouts that used this team here`}>Used</th><th title="This week: runner-up by DILI. Later weeks: the team used next most often here">Backup</th><th>Why</th></tr>
           : tab === "96"
           ? <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title={`How many of ${cons.samples} jiggled seasons put this team here`}>Held</th><th title="Runner-up by count, not used elsewhere on this map">Backup</th><th>Why</th></tr>
           : <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title="DILI for that week, scored as the Planner scores it">DILI</th><th title="This week: second-best DILI. Later weeks: the strongest team the plan leaves free">Backup</th><th>Why</th></tr>}</thead>
         <tbody>
+          {tab === "sim" && !sim && <tr><td colSpan={7} className="why">Running {SIM_PLAYOUTS} playouts of the rest of the season…</td></tr>}
           {LEGS.map((l) => {
             const p = planned[l.id];
             if (data.actuals[l.id] && !p) return pastRow(l);
@@ -2022,6 +2102,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
             let why;
             if (!p.team) why = "Nothing eligible left for this week: it would be a forfeit.";
             else if (tab === "96") why = (p.held >= cons.samples / 2 ? "Solid." : p.held >= cons.samples / 3 ? "Leaning." : "Toss-up.") + holidayNote(p) + soft;
+            else if (tab === "sim" && p.planned) why = ((p.options && p.options.length > 1 ? `Playouts used ${p.options.map(([t, x]) => `${t} ${pct0(x)}`).join(", ")}.` : "Used here in every playout.") + holidayNote(p) + soft).trim();
             else if (p.planned) why = ((tab === "rules" && l.id === "XM" && rules.held.length ? `Held back for this slate: ${rules.held.join(", ")}. ` : "") + (p.backup ? "" : "Nothing else is free this week.") + holidayNote(p) + soft).trim();
             else why = (p.backup == null ? "Only option." : p.dili - p.backupDili < 0.03 ? `Close call, ${p.backup} is ${(p.dili - p.backupDili).toFixed(2)} behind.` : `Clear, ${(p.dili - p.backupDili).toFixed(2)} ahead of ${p.backup}.`) + holidayNote(p) + soft;
             return (
@@ -2030,8 +2111,8 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
                 <td><span className="pc">{p.team ? teamChip(p.team) : "–"}</span></td>
                 <td>{p.team ? gameText(l.id, p.team, data) : ""}</td>
                 <td className={p.win != null && p.win < 0.6 ? "weak" : ""}>{pct0(p.win)}</td>
-                <td>{tab === "96" ? (p.team ? `${p.held}/${p.samples}` : "") : (p.dili != null ? p.dili.toFixed(2) : "")}</td>
-                <td className="bk">{p.backup ? <>{teamChip(p.backup, true)} {tab === "96" ? `${p.backupHeld}/${p.samples}` : p.backupDili != null ? p.backupDili.toFixed(2) : pct0(p.backupWin)}</> : "–"}</td>
+                <td>{tab === "96" ? (p.team ? `${p.held}/${p.samples}` : "") : tab === "sim" && p.planned ? (p.team ? pct0(p.held) : "") : (p.dili != null ? p.dili.toFixed(2) : "")}</td>
+                <td className="bk">{p.backup ? <>{teamChip(p.backup, true)} {tab === "96" ? `${p.backupHeld}/${p.samples}` : tab === "sim" && p.planned ? pct0(p.backupHeld) : p.backupDili != null ? p.backupDili.toFixed(2) : pct0(p.backupWin)}</> : "–"}</td>
                 <td className="why" title={why}>{why}</td>
               </tr>
             );

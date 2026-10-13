@@ -1,5 +1,5 @@
 // DILI: EV net of what the team is worth to the rest of the entry's season (the map); and the futures-market prior.
-import { buildData, computeEV, computeDili, planMap, spentTeams, customSummary, fitParams, fvFor, strengthWeight, futureFor, diliPlan, consensusPlan, locksPicks, modelPick, marketLine, lineFor, seasonTable, mapLegs, expWin, survivalPath, rulesPlan } from "../src/CircaSurvivorPlanner.jsx";
+import { buildData, computeEV, computeDili, planMap, spentTeams, customSummary, fitParams, fvFor, strengthWeight, futureFor, diliPlan, consensusPlan, locksPicks, modelPick, marketLine, lineFor, seasonTable, mapLegs, expWin, survivalPath, rulesPlan, simPlan } from "../src/CircaSurvivorPlanner.jsx";
 import splash from "../data/splash.json";
 import { priorFromFutures } from "../src/ratings.js";
 import { OPP, ALL_TEAMS, LEGS, TG_TEAMS, XM_TEAMS } from "../src/schedule.js";
@@ -183,6 +183,23 @@ ok("future value on a readable scale", fvFor("W2", "KC", data) < 18 && fvFor("W2
   for (let k = 0; k <= tg; k++) { const l = LEGS[k]; if (fake.legs[l.id]) continue; const w = Object.keys(OPP[l.id]).find((t) => OPP[l.id][t].home && !Object.values(fp).includes(t)); fake.legs[l.id] = { asOf: "test", picks: { [w]: 100 }, won: [w], lost: [], pending: [], fv: {} }; fp[l.id] = w; }
   const later = buildData({ picks, actuals: fake, odds, ratings, splash }), rl = rulesPlan(later, fp, fitParams(later));
   ok("the rule lifts after Thanksgiving", !rl.active && rl.held.length === 0 && rl.currentLeg?.id === "W12", `current ${rl.currentLeg?.id}, held ${rl.held.join(",") || "none"}`);
+})();
+
+// the Simulation map on real data: sane forfeits, a full plan, and a fair comparison with the current forfeit
+(() => {
+  const real = buildData({ picks, actuals, odds, ratings, splash }), params = fitParams(real), e = picks.entries[0], spent = spentTeams(real, e.picks);
+  const t0 = Date.now(); const sp = simPlan(real, e.picks, params); const ms = Date.now() - t0;
+  ok("Simulation map is quick enough for the page", ms < 3000, `${ms} ms`);
+  ok("Simulation map fills every open week with distinct, unspent teams", sp.plan.length > 0 && sp.plan.every((q) => q.team) && new Set(sp.plan.map((q) => q.team)).size === sp.plan.length && sp.plan.every((q) => !spent.has(q.team)), sp.plan.map((q) => `${q.leg.id} ${q.team} ${Math.round(100 * q.held)}%`).join(" "));
+  const rows = Object.values(sp.rows);
+  ok("every playout forfeit is at least 1 and finite", rows.length > 5 && rows.every((r) => r.forfeit >= 1 && Number.isFinite(r.forfeit)), `${rows.length} candidates`);
+  ok("this week's pick is the top EV ÷ playout forfeit", sp.plan[0].team === Object.keys(sp.rows).sort((a, b) => sp.rows[b].dili - sp.rows[a].dili)[0]);
+  ok("expected win-out sits in a sane range", sp.winOut > 0.001 && sp.winOut < 0.2, `${(100 * sp.winOut).toFixed(2)}%`);
+  ok("later-week shares are shares", sp.plan.slice(1).every((q) => q.held > 0 && q.held <= 1 + 1e-9));
+  const same = simPlan(real, e.picks, params); ok("same inputs, same simulation", same === sp || same.plan.map((q) => q.team).join() === sp.plan.map((q) => q.team).join());
+  const both = rows.filter((r) => r.oldForfeit != null && Number.isFinite(r.oldForfeit));
+  const corr = (() => { const n = both.length, mx = both.reduce((a, r) => a + Math.log(r.forfeit), 0) / n, my = both.reduce((a, r) => a + Math.log(r.oldForfeit), 0) / n; const sxy = both.reduce((a, r) => a + (Math.log(r.forfeit) - mx) * (Math.log(r.oldForfeit) - my), 0), sx = Math.sqrt(both.reduce((a, r) => a + (Math.log(r.forfeit) - mx) ** 2, 0)), sy = Math.sqrt(both.reduce((a, r) => a + (Math.log(r.oldForfeit) - my) ** 2, 0)); return sx && sy ? sxy / (sx * sy) : 0; })();
+  ok("playout forfeits broadly agree with the current forfeits (comparison phase)", corr > 0.3, `correlation ${corr.toFixed(2)} over ${both.length} teams`);
 })();
 
 // the two Claude maps

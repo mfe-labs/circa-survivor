@@ -145,6 +145,15 @@ fetch fails, last season's market ratings regressed 40% toward average are the f
   choice containing both sides of one Christmas game is preferred when within RULE_SLACK (2% of win-out). Active while
   `nowIdx <= TG`; afterwards nothing is held. This week = top DILI not held (`scoreCurrentWeek`, shared with diliPlan).
   Returns held, pair, winOut and `freeWinOut` (same current pick, nothing held) for the price shown on the strip.
+- `simulate.js` is the playout engine (docs/PLAN-maps-redesign.md step 2): `solve` (assignment on E[win] over the
+  movement still ahead), `simulate` (rolling re-plan week by week on a random walk of team-level shocks whose
+  per-lead variance matches noiseSd; antithetic pairs; seeded), `scoreCandidates` (win now, rest = expected survival of
+  the later legs with the team spent, forfeit = base ÷ rest on common random numbers). `solver.js` holds the shared
+  numerics. `sim.worker.js` runs it off the main thread.
+- `simPlan(data, picks, params)` / `useSimPlan` is Claude Simulation Map: inputs from seasonTable (z, ff for the
+  current leg, SIM_OPP, SIM_SD by lead), scores from the engine, this week = top EV ÷ playout forfeit (rows carry
+  `oldForfeit` for the comparison), later rows = most-used team per week not already shown, Christmas = usage spread.
+  512 playouts: forfeits move about ±0.01 between seeds. The Planner's forfeit is unchanged; tooltips show both.
 - `locksPicks(dili, cons)` is Claude Locks: the weeks where both maps name the same team; shown through
   `customSummary` like a saved map, read-only.
 - `planMap(data, picks, params)` is the single-solve map underneath (also used by DILI's tooltips): the projected map, per-leg first-choice counts across the 96
