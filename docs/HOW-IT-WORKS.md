@@ -42,7 +42,8 @@ each with its own pick. Each team once per entry. Tie = loss. Schedule is hard-c
   for one number per team, shrunk toward the Super Bowl futures prior (λ = 2). Recent games count more: a line's
   weight halves every 3 weeks back (backtested on 2025–26 closing spreads; equal weights were worst in every test).
   Ratings project spreads for every future cell (italic) and drive the Future column; spread → win chance is
-  Φ(spread ÷ 11.5), calibrated to closing moneylines (`MARGIN_SD`).
+  Φ(spread ÷ 11.5), calibrated to closing moneylines (`MARGIN_SD`). Projections are pulled toward even by lead
+  (`PULL`: ×0.9 two legs out, ×0.8 beyond; measured slopes 0.83/0.77/0.80), via `lineFor`'s lead from lockedIdx.
 - **Picks** (`picks.json`) are written by the app when the owner is signed in. After a week locks they are also
   confirmed against Circa's file (below), which is the source of truth.
 - **Circa actuals** (`actuals.json`): a GitHub Action runs every 3 hours from Thursday to Monday. Circa posts a text
@@ -153,7 +154,9 @@ fetch fails, last season's market ratings regressed 40% toward average are the f
 - `simPlan(data, picks, params)` / `useSimPlan` is Claude Simulation Map: inputs from seasonTable (z, ff for the
   current leg, SIM_OPP, SIM_SD by lead), scores from the engine, this week = top EV ÷ playout forfeit (rows carry
   `oldForfeit` for the comparison), later rows = most-used team per week not already shown, Christmas = usage spread.
-  512 playouts: forfeits move about ±0.01 between seeds. The Planner's forfeit is unchanged; tooltips show both.
+  512 playouts: forfeits move about ±0.01 between seeds. `SIM_TRUST` = 0.7: a later week's realized win chance blends
+  the moved line (70%) with today's (30%); the simulated planner still picks on the moved line. The Simulation map's
+  `winOut` is the product of today's lines along its shown path (apples to apples); `expected` is win × rest.
 - `locksPicks(dili, cons)` is Claude Locks: the weeks where both maps name the same team; shown through
   `customSummary` like a saved map, read-only.
 - `planMap(data, picks, params)` is the single-solve map underneath (also used by DILI's tooltips): the projected map, per-leg first-choice counts across the 96

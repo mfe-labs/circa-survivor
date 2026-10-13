@@ -1,5 +1,5 @@
 // The playout engine on hand-built seasons (docs/PLAN-maps-redesign.md, step 2 checks)
-import { solve, simulate, scoreCandidates, incrementVar } from "../src/simulate.js";
+import { solve, simulate, scoreCandidates, incrementVar, SIM_TRUST } from "../src/simulate.js";
 import { normCdf } from "../src/solver.js";
 let fails = 0;
 const ok = (name, cond, note = "") => { console.log(`${name}: ${cond ? "OK" : "FAIL"} ${note}`); if (!cond) fails++; };
@@ -62,6 +62,16 @@ const drift = (lead) => (lead === 1 ? 1.5 : 3 + 0.25 * lead) / 11.5;
   ok("so the pick that keeps Christmas open scores higher", noisy.teams[6].win * noisy.teams[6].rest < noisy.teams[0].win * noisy.teams[0].rest || noisy.teams[6].forfeit < noisy.teams[0].forfeit, `G forfeit ${noisy.teams[6].forfeit.toFixed(3)} < A ${noisy.teams[0].forfeit.toFixed(3)}`);
   ok("all forfeits are at least 1 and finite", Object.values(noisy.teams).every((t) => t.forfeit >= 1 - 1e-9 && Number.isFinite(t.forfeit)));
   ok("every candidate is scored on the same paths: the base value is shared", noisy.base > 0 && Object.values(noisy.teams).every((t) => t.rest <= noisy.base + 1e-12));
+})();
+
+// 3b. trust: how much of the foreseen movement a later week is credited with
+(() => {
+  const L = league(6, [[[0, 1, 0.75], [2, 3, 0.65], [4, 5, 0.55]], [[2, 0, 0.7], [4, 1, 0.6], [5, 3, 0.52]], [[4, 2, 0.8], [0, 3, 0.62], [1, 5, 0.58]]]);
+  const burned = new Array(6).fill(0);
+  const full = simulate({ ...L, burned, sdLead: drift, n: 64, trust: 1 }).value, none = simulate({ ...L, burned, sdLead: drift, n: 64, trust: 0 }).value, mid = simulate({ ...L, burned, sdLead: drift, n: 64, trust: SIM_TRUST }).value;
+  const plan = solve(L.z, Object.fromEntries(L.legs.map((k) => [k, new Float64Array(6)])), null, L.legs, [0, 1, 2, 3, 4, 5]), prod = plan.reduce((v, i, j) => v * normCdf(L.z[j][i]), 1);
+  ok("trust 0 values every week at today's line, so it cannot beat the no-noise plan", none <= prod + 1e-12, `${none.toFixed(4)} ≤ ${prod.toFixed(4)}`);
+  ok("the default trust sits between no movement and full movement", mid >= Math.min(none, full) - 1e-12 && mid <= Math.max(none, full) + 1e-12 && SIM_TRUST > 0 && SIM_TRUST < 1, `0: ${none.toFixed(4)} · ${SIM_TRUST}: ${mid.toFixed(4)} · 1: ${full.toFixed(4)}`);
 })();
 
 // 4. speed: a season-sized problem

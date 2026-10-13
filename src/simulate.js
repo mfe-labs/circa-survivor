@@ -18,7 +18,12 @@
 // comparisons between candidates are smooth rather than noisy.
 import { normCdf, hungarian, seededRng, gauss } from "./solver.js";
 
-export const SIM_PLAYOUTS = 512, SIM_SEED = 20262, FLOOR = 0.02;   // 512 antithetic playouts: forfeits move ~±0.01 between seeds
+export const SIM_PLAYOUTS = 512, SIM_SEED = 20262, FLOOR = 0.02;
+// How much of the foreseen line movement a later week's pick is credited with. The simulated planner still picks on
+// the moved line (it sees it), but the week's realized win chance blends the moved line with today's. At 1 the
+// playouts fully exploit every drift (one of several near-even games "usually" becomes a 67% favorite, which the
+// closing-line data suggests happens less often than a bell curve says); at 0 nothing moves, the old maps' view.
+export const SIM_TRUST = 0.7;   // 512 antithetic playouts: forfeits move ~±0.01 between seeds
 
 // variance of the movement that turns a `lead`-legs-out estimate into a `lead − 1` one (sdLead(0) = 0: final)
 export const incrementVar = (sdLead, lead) => { const a = sdLead(lead), b = lead > 1 ? sdLead(lead - 1) : 0; return Math.max(0, a * a - b * b); };
@@ -34,7 +39,7 @@ export function solve(zRows, sdRows, ffRows, legs, teams, blocked = null) {
   return legs.map((k, j) => (cost[j][a[j]] >= BIG ? -1 : teams[a[j]]));
 }
 
-function playout(z0, ff, legs, nTeams, burned, sdLead, opp, rng, blocked, sign = 1) {
+function playout(z0, ff, legs, nTeams, burned, sdLead, opp, rng, blocked, sign = 1, trust = SIM_TRUST) {
   const z = {}; for (const k of legs) z[k] = Float64Array.from(z0[k]);
   const spent = burned.slice(), path = new Array(legs.length).fill(-1);
   let value = 1;
@@ -55,21 +60,21 @@ function playout(z0, ff, legs, nTeams, burned, sdLead, opp, rng, blocked, sign =
     const pick = solve(z, sdRows, s === 0 ? ff : null, rest, teams, blocked);
     const i = pick[0], k = legs[s];
     if (i < 0) return { value: value * FLOOR, path };
-    path[s] = i; spent[i] = 1; value *= normCdf(z[k][i]);
+    path[s] = i; spent[i] = 1; value *= normCdf(trust * z[k][i] + (1 - trust) * z0[k][i]);
   }
   return { value, path };
 }
 
 // Expected survival over `legs` (ascending leg indices) with `burned` (array of 0/1 per team) spent, under the
 // rolling policy, averaged over n playouts. usage[j][i] = share of playouts that used team i in legs[j].
-export function simulate({ z, ff = null, legs, nTeams, burned, sdLead, opp, blocked = null, n = SIM_PLAYOUTS, seed = SIM_SEED }) {
+export function simulate({ z, ff = null, legs, nTeams, burned, sdLead, opp, blocked = null, n = SIM_PLAYOUTS, seed = SIM_SEED, trust = SIM_TRUST }) {
   if (!legs.length) return { value: 1, usage: [], n: 0 };
   // antithetic pairs: every path is run with its shocks and with them negated, which cancels most of the sampling
   // noise for the smooth part of the answer (half the playouts for the same precision)
   const usage = legs.map(() => new Float64Array(nTeams)), m = Math.max(1, Math.round(n / 2));
   let total = 0;
   for (let p = 0; p < m; p++) for (const sign of [1, -1]) {
-    const r = playout(z, ff, legs, nTeams, burned, sdLead, opp, seededRng(seed + 7919 * p), blocked, sign);
+    const r = playout(z, ff, legs, nTeams, burned, sdLead, opp, seededRng(seed + 7919 * p), blocked, sign, trust);
     total += r.value;
     r.path.forEach((i, j) => { if (i >= 0) usage[j][i] += 1 / (2 * m); });
   }
@@ -79,14 +84,14 @@ export function simulate({ z, ff = null, legs, nTeams, burned, sdLead, opp, bloc
 // Score candidates for the current leg (legs[0]): win = closing win chance now, rest = expected survival of every
 // later leg with the team spent, forfeit = rest with nothing extra spent ÷ rest with the team spent (≥ 1 means the
 // team is worth something later). Every candidate is scored on the same playout paths.
-export function scoreCandidates({ z, ff = null, legs, nTeams, burned, sdLead, opp, candidates, n = SIM_PLAYOUTS, seed = SIM_SEED, blocked = null }) {
+export function scoreCandidates({ z, ff = null, legs, nTeams, burned, sdLead, opp, candidates, n = SIM_PLAYOUTS, seed = SIM_SEED, blocked = null, trust = SIM_TRUST }) {
   const [now, ...later] = legs;
-  const base = simulate({ z, legs: later, nTeams, burned, sdLead, opp, blocked, n, seed });
+  const base = simulate({ z, legs: later, nTeams, burned, sdLead, opp, blocked, n, seed, trust });
   const teams = {};
   for (const i of candidates) {
     if (Number.isNaN(z[now][i]) || burned[i]) continue;
     const b = burned.slice(); b[i] = 1;
-    const rest = simulate({ z, legs: later, nTeams, burned: b, sdLead, opp, blocked, n, seed });
+    const rest = simulate({ z, legs: later, nTeams, burned: b, sdLead, opp, blocked, n, seed, trust });
     teams[i] = { win: normCdf(z[now][i]), rest: rest.value, forfeit: base.value / Math.max(rest.value, 1e-12), usage: rest.usage };
   }
   return { base: base.value, teams, n };

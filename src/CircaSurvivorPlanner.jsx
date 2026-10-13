@@ -38,11 +38,16 @@ function erf(x) {
   return x < 0 ? -y : y;
 }
 const winFromMargin = (m) => normCdf(m / MARGIN_SD);
+// Projected spreads for games more than a week out run too strong: against closing lines, a projection two or more
+// legs ahead closed at about 0.8 of itself on average (slopes 0.83, 0.77, 0.80 at two, three and four legs out;
+// 0.96 for next week's market lines). PULL shrinks a projection toward even by how far out it is, so a distant
+// favorite is worth a little less to every map, forfeit and playout than its raw rating gap says.
+const PULL = (lead) => (lead <= 1 ? 1 : lead === 2 ? 0.9 : 0.8);
 // spread from this team's perspective (negative = favorite), and win prob, projected from power ratings
-function projected(legId, team, ratings) {
+function projected(legId, team, ratings, lead = 1) {
   const g = OPP[legId][team];
   if (!g || !ratings || ratings[team] == null || ratings[g.opp] == null) return null;
-  const margin = ratings[team] - ratings[g.opp] + (g.neutral ? 0 : g.home ? HFA : -HFA) + REST_PTS * restEdge(legId, team);
+  const margin = PULL(lead) * (ratings[team] - ratings[g.opp] + (g.neutral ? 0 : g.home ? HFA : -HFA) + REST_PTS * restEdge(legId, team));
   return { spread: Math.round(-margin * 10) / 10, win: winFromMargin(margin), proj: true };
 }
 
@@ -172,7 +177,7 @@ function buildData({ picks, actuals, odds, ratings, splash = null }, withPrev = 
 function lineFor(legId, team, data) {
   const live = data?.legs?.[legId]?.lines?.[team];
   if (live) return { ...live, proj: false };
-  return projected(legId, team, data?.ratings);
+  return projected(legId, team, data?.ratings, LEGS.findIndex((l) => l.id === legId) - lockedIdx(data) + 1);
 }
 function marketLine(legId, team, data) {
   const ln = data?.legs?.[legId]?.lines?.[team];
@@ -659,7 +664,7 @@ function simFromScores(data, picks, params, inp, sc) {
     if (team) before.add(team);
   });
   const live = plan.filter((p) => p.team), xm = plan.find((p) => p.leg.id === "XM");
-  return { plan, currentLeg: l0, winOut: r1.win * r1.rest, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), rows, base: sc.base, samples: n, xmas: xm?.options || [] };
+  return { plan, currentLeg: l0, winOut: live.length === plan.length ? live.reduce((x, p) => x * p.win, 1) : 0, expected: r1.win * r1.rest, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), rows, base: sc.base, samples: n, xmas: xm?.options || [] };
 }
 // synchronous version (tests, and the fallback when workers are unavailable)
 export function simPlan(data, picks, params = PRIOR, n = SIM_PLAYOUTS) {
@@ -2010,7 +2015,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
     : tab === "rules"
     ? { winOut: rules.winOut, weakest: rules.weakest, cheapLeg: rules.currentLeg, rule: true }
     : tab === "sim"
-    ? { winOut: res.winOut || null, winNote: sim ? null : "running the playouts…", winCap: "expected chance of winning every week as lines move and picks adjust", weakest: res.weakest, cheapLeg: res.currentLeg, simBox: true }
+    ? { winOut: sim ? res.winOut : null, winNote: sim ? null : "running the playouts…", weakest: res.weakest, cheapLeg: res.currentLeg, simBox: true, expected: sim ? res.expected : null }
     : tab === "96"
     ? { winOut: cons.winOut, weakest: cons.weakest, cheapLeg: cons.nowLeg,
         cheap: cons.free.map((f) => <span key={f.team} title={`${f.team} is ${pct0(f.win)} to win this week and gets used in a later week in ${Math.round(100 * f.onMap)}% of the ${cons.samples} seasons`}>{teamChip(f.team, true)} <span className="mut">({pct0(f.win)})</span> {pct0(f.onMap)}</span>),
@@ -2046,7 +2051,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
         {custom && canEdit && <span className="tabact"><button className="link" onClick={rename}>Rename</button><button className="link" onClick={remove}>Delete</button></span>}
       </div>
       <div className="strip">
-        <div className="fig"><div className={"v" + (box.winOut == null && box.winNote ? " bad" : "")}>{box.winOut != null ? (100 * box.winOut).toFixed(1) + "%" : box.winNote ? "not valid" : "–"}</div><div className="k">{box.winOut == null && box.winNote ? box.winNote : box.winCap || "chance of winning every week on this map"}</div></div>
+        <div className="fig"><div className={"v" + (box.winOut == null && box.winNote ? " bad" : "")}>{box.winOut != null ? (100 * box.winOut).toFixed(1) + "%" : box.winNote ? "not valid" : "–"}</div><div className="k">{box.winOut == null && box.winNote ? box.winNote : box.winCap || "chance of winning every week on this map"}{box.expected != null && <span className="sub">{(100 * box.expected).toFixed(1)}% expected if you re-pick each week as the lines move</span>}</div></div>
         <div className="fig"><div className="v sm">{box.weakest.map((p) => <span key={p.leg.id}>{shortLeg(p.leg)} {pct0(p.win)}</span>)}</div><div className="k">weakest weeks, where the entry most likely dies</div></div>
         {box.simBox ? <div className="fig"><div className="v sm">{res.xmas.length ? res.xmas.map(([t, x]) => <span key={t}>{teamChip(t, true)} <span className="mut">{pct0(x)}</span></span>) : "–"}</div><div className="k">Christmas options kept: how often the playouts used each team there</div></div>
         : box.rule ? <div className="fig"><div className="v sm">{rules.held.length ? rules.held.map((t) => <span key={t}>{teamChip(t, true)}</span>) : "none"}{rules.freeWinOut != null && rules.winOut > 0 && <span className="mut"> costs {Math.max(0, Math.round(100 * (1 - rules.winOut / rules.freeWinOut)))}% of win-out</span>}</div><div className="k">{rules.active ? `held for Christmas until Thanksgiving is played${rules.pair ? ", both sides of one game" : ""}; what the holdback costs against the unconstrained plan` : rules.pool.length ? "Thanksgiving is played: nothing held, the rule has lifted" : "no Christmas teams left to hold"}</div></div>
