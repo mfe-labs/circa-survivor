@@ -1914,7 +1914,7 @@ function PickPicker({ legId, team, data, usedAt, onPick, canEdit, conflict, lock
 function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
   const sim = useSimPlan(data, entry.picks, params);   // null while the worker is still running the playouts
   const rules = useMemo(() => rulesPlan(data, entry.picks, params, undefined, forfeitsOf(sim)), [data, entry, params, sim]);
-  const [tab, setTab] = useState("rules");
+  const [tab, setTab] = useState("sim");
   // your own map tabs can be dragged into a new order; the order is saved with the maps
   const [drag, setDrag] = useState(null), [over, setOver] = useState(null);
   const dropAt = (e, m) => { e.preventDefault(); if (!drag || drag === m.id) return; const r = e.currentTarget.getBoundingClientRect(); setOver({ id: m.id, after: e.clientX > r.left + r.width / 2 }); };
@@ -1939,7 +1939,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
   const create = () => {
     const name = window.prompt("Name this map", `Map ${maps.length + 1}`); if (!name?.trim()) return;
     const id = Date.now().toString(36);
-    const picks = Object.fromEntries(rules.plan.filter((p) => p.team).map((p) => [p.leg.id, p.team]));
+    const picks = Object.fromEntries((sim || rules).plan.filter((p) => p.team).map((p) => [p.leg.id, p.team]));
     onMaps((m) => ({ maps: [...m.maps, { id, name: name.trim(), entry: entry.name, picks }] }), `Map: new "${name.trim()}" for ${entry.name}`);
     setTab(id);
   };
@@ -1950,7 +1950,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
   const remove = () => {
     if (!window.confirm(`Delete the map "${custom.name}"?`)) return;
     onMaps((m) => ({ maps: m.maps.filter((x) => x.id !== custom.id) }), `Map: delete "${custom.name}"`);
-    setTab("rules");
+    setTab("sim");
   };
   const setMapPick = (legId, team) => onMaps((m) => ({ maps: m.maps.map((x) => { if (x.id !== custom.id) return x; const picks = { ...x.picks }; if (team) picks[legId] = team; else delete picks[legId]; return { ...x, picks }; }) }), `Map "${custom.name}": ${legId} ${team || "empty"}`);
 
@@ -1981,13 +1981,13 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
   return (
     <div className={"act mapv" + (rh < 34 ? " tight" : "")} ref={boxRef} style={{ "--mrh": rh + "px" }}>
       <div className="maptabs" onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOver(null); }}>
-        <div role="button" tabIndex={0} className={"tab claude" + (tab === "rules" ? " on" : "")} onClick={() => setTab("rules")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("rules"); } }} title="Hold three Christmas teams until Thanksgiving is played, then plan for survival">Claude Rules Map</div>
         <div role="button" tabIndex={0} className={"tab claude" + (tab === "sim" ? " on" : "")} onClick={() => setTab("sim")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("sim"); } }} title="Lines move and each week is re-picked as they do: the pick that wins out most often across the playouts">Claude Simulation Map</div>
+        <div role="button" tabIndex={0} className={"tab claude" + (tab === "rules" ? " on" : "")} onClick={() => setTab("rules")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("rules"); } }} title="Hold three Christmas teams until Thanksgiving is played, then plan for survival">Claude Rules Map</div>
         <div role="button" tabIndex={0} className={"tab claude" + (tab === "locks" ? " on" : "")} onClick={() => setTab("locks")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("locks"); } }} title="The weeks where both Claude maps name the same team; the rest left empty">Claude Locks</div>
         {maps.map((m) => <div key={m.id} role="button" tabIndex={0} className={"tab" + (custom?.id === m.id ? " on" : "") + (drag === m.id ? " drag" : "") + (over?.id === m.id && drag !== m.id ? (over.after ? " ins-r" : " ins-l") : "")} onClick={() => setTab(m.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab(m.id); } }}
           draggable={canEdit} onDragStart={(e) => { e.dataTransfer.setData("text/plain", m.id); e.dataTransfer.effectAllowed = "move"; setDrag(m.id); }} onDragEnter={(e) => e.preventDefault()} onDragOver={(e) => dropAt(e, m)} onDrop={(e) => { e.preventDefault(); drop(); }} onDragEnd={() => { setDrag(null); setOver(null); }}
           title={canEdit && maps.length > 1 ? "Drag to reorder" : undefined}>{m.name}</div>)}
-        {canEdit && <div role="button" tabIndex={0} className="tab add" onClick={create} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); create(); } }} title="New map, starting from Claude Rules Map">+</div>}
+        {canEdit && <div role="button" tabIndex={0} className="tab add" onClick={create} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); create(); } }} title="New map, starting from Claude Simulation Map">+</div>}
         {custom && canEdit && <span className="tabact"><button className="link" onClick={rename}>Rename</button><button className="link" onClick={remove}>Delete</button></span>}
       </div>
       <div className="strip">
