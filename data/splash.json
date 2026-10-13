@@ -134,6 +134,33 @@
      "DAL": "L",
      "TB": "W"
     }
+   },
+   "survived": 2481,
+   "eliminated": 2597,
+   "missed": 3,
+   "pending": {
+    "LAR": 3
+   },
+   "picks": {
+    "DAL": 1921,
+    "HOU": 1016,
+    "CIN": 622,
+    "JAX": 499,
+    "WAS": 373,
+    "ATL": 289,
+    "DET": 131,
+    "NE": 82,
+    "PIT": 56,
+    "NYJ": 36,
+    "DEN": 30,
+    "CLE": 5,
+    "CHI": 4,
+    "MIN": 4,
+    "LAR": 3,
+    "BAL": 1,
+    "SEA": 1,
+    "TEN": 1,
+    "GB": 1
    }
   }
  }
