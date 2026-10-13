@@ -1,11 +1,12 @@
 // Market-based power ratings: fit one number per team (points vs. an average team on a neutral field)
 // so that home rating − away rating + home-field ≈ the market spread, across every game with a line.
 // Ridge shrinkage toward 0 keeps early-season estimates sane; the fit sharpens every week.
-import { ALL_TEAMS } from "./schedule.js";
+import { ALL_TEAMS, REST_PTS } from "./schedule.js";
 
-export const HFA = 2;
+export const HFA = 1.5;   // backtested on 2025–26 closing spreads: 1.5 beat 2 (3.92 vs 3.94 pts rms in 2025, 2.73 vs 2.85 in 2026)
 
-// games: [{ home, away, margin, neutral, weight }] where margin = expected home margin (spread from home view, positive = home favored)
+// games: [{ home, away, margin, neutral, weight, rest }] where margin = expected home margin (spread from home view, positive = home favored)
+// and rest = (home off a bye) − (away off a bye), worth REST_PTS each, taken out of the margin before fitting
 // prior: optional {team: rating} the fit is shrunk toward (e.g. last season's market ratings); default 0
 export function fitRatings(games, { lambda = 2, prior = {} } = {}) {
   const idx = Object.fromEntries(ALL_TEAMS.map((t, i) => [t, i]));
@@ -16,7 +17,7 @@ export function fitRatings(games, { lambda = 2, prior = {} } = {}) {
   for (const g of games) {
     const h = idx[g.home], a = idx[g.away];
     if (h == null || a == null || !Number.isFinite(g.margin)) continue;
-    const w = g.weight ?? 1, y = g.margin - (g.neutral ? 0 : HFA);
+    const w = g.weight ?? 1, y = g.margin - (g.neutral ? 0 : HFA) - REST_PTS * (g.rest || 0);
     // residual = r_h − r_a − y ; accumulate normal equations
     A[h][h] += w; A[a][a] += w; A[h][a] -= w; A[a][h] -= w;
     b[h] += w * y; b[a] -= w * y;

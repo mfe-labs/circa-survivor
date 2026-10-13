@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { LEGS, ALL_TEAMS, OPP, TG_TEAMS, XM_TEAMS, legLabel } from "./schedule.js";
+import { LEGS, ALL_TEAMS, OPP, TG_TEAMS, XM_TEAMS, legLabel, REST_PTS, restEdge } from "./schedule.js";
 import { HFA } from "./ratings.js";
 import { REPO, readFile, writeFile, whoAmI, dispatchWorkflow } from "./github.js";
 import { fetchSelections, fetchResults, legFromCirca, rescore } from "./circaLive.js";
@@ -41,7 +41,7 @@ const winFromMargin = (m) => normCdf(m / MARGIN_SD);
 function projected(legId, team, ratings) {
   const g = OPP[legId][team];
   if (!g || !ratings || ratings[team] == null || ratings[g.opp] == null) return null;
-  const margin = ratings[team] - ratings[g.opp] + (g.neutral ? 0 : g.home ? HFA : -HFA);
+  const margin = ratings[team] - ratings[g.opp] + (g.neutral ? 0 : g.home ? HFA : -HFA) + REST_PTS * restEdge(legId, team);
   return { spread: Math.round(-margin * 10) / 10, win: winFromMargin(margin), proj: true };
 }
 

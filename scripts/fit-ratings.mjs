@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { fitRatings, priorFromFutures } from "../src/ratings.js";
 import { loadGames } from "./nflverse.mjs";
 import { fetchRetry } from "./http.mjs";
-import { ABBR } from "../src/schedule.js";
+import { ABBR, restEdge } from "../src/schedule.js";
 
 const OUT = new URL("../data/ratings.json", import.meta.url);
 const ODDS = new URL("../data/odds.json", import.meta.url);
@@ -16,9 +16,13 @@ const HALF_LIFE = 3;
 const rows = await loadGames();
 const curWeek = Math.max(0, ...rows.filter((r) => r.season === "2026" && r.result != null).map((r) => r.week)) + 1;
 const games = [], last = [], seen = new Set();
+// a team whose previous game was two or more weeks earlier is off a bye
+const prevWeek = {}, restOf = {};
+for (const r of [...rows].sort((a, b) => a.season - b.season || a.week - b.week)) for (const t of [r.home, r.away]) { const k = r.season + "|" + t; restOf[r.season + "|" + r.week + "|" + t] = prevWeek[k] == null ? 0 : r.week - prevWeek[k] > 1 ? 1 : 0; prevWeek[k] = r.week; }
 for (const r of rows) {
   if (r.spread == null) continue;
-  const g = { home: r.home, away: r.away, margin: r.spread, neutral: r.neutral, weight: Math.pow(0.5, Math.max(0, curWeek - r.week) / HALF_LIFE) };
+  const rest = restOf[r.season + "|" + r.week + "|" + r.home] - restOf[r.season + "|" + r.week + "|" + r.away];
+  const g = { home: r.home, away: r.away, margin: r.spread, neutral: r.neutral, rest, weight: Math.pow(0.5, Math.max(0, curWeek - r.week) / HALF_LIFE) };
   if (r.season === "2025") last.push(g);
   if (r.season === "2026") { games.push(g); seen.add(`${r.away}@${r.home}`); }
 }
@@ -48,13 +52,13 @@ if (!prior) { const prev = fitRatings(last, { lambda: 0.5 }).ratings; prior = Ob
 const fromNflverse = games.length;
 try {
   const odds = JSON.parse(readFileSync(ODDS, "utf8"));
-  for (const leg of Object.values(odds.legs || {})) for (const [key, g] of Object.entries(leg.games || {})) {
+  for (const [legId, leg] of Object.entries(odds.legs || {})) for (const [key, g] of Object.entries(leg.games || {})) {
     if (seen.has(key)) continue;
     const [away, home] = key.split("@");
     const sps = Object.values(g.books || {}).map((b) => b.spread?.[home]).filter((v) => v != null).sort((a, b) => a - b);
     if (!sps.length) continue;
     const med = sps.length % 2 ? sps[(sps.length - 1) / 2] : (sps[sps.length / 2 - 1] + sps[sps.length / 2]) / 2;
-    games.push({ home, away, margin: -med, neutral: false, weight: 1 });
+    games.push({ home, away, margin: -med, neutral: false, rest: restEdge(legId, home), weight: 1 });
   }
 } catch {}
 const { ratings, games: used } = fitRatings(games, { lambda: 2, prior });

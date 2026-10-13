@@ -37,7 +37,8 @@ each with its own pick. Each team once per entry. Tie = loss. Schedule is hard-c
   flatter the rest. With partial coverage EV is still shown but the column is marked `EV*` with the coverage in its
   tooltip; below 75% coverage EV is blanked.
 - **Power ratings** (`ratings.json`): fit by the same Action from market spreads. Every 2026 game with a closing
-  line (nflverse) plus the current DraftKings spreads is an equation `home − away + 2 = spread`; a ridge fit solves
+  line (nflverse) plus the current DraftKings spreads is an equation `home − away + HFA + REST_PTS·rest = spread` (HFA 1.5, rest = home off a bye − away off a bye, 1 pt;
+  both backtested on 2025–26 closing lines, `restEdge` in schedule.js); a ridge fit solves
   for one number per team, shrunk toward the Super Bowl futures prior (λ = 2). Recent games count more: a line's
   weight halves every 3 weeks back (backtested on 2025–26 closing spreads; equal weights were worst in every test).
   Ratings project spreads for every future cell (italic) and drive the Future column; spread → win chance is

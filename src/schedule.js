@@ -49,6 +49,19 @@ for (const leg of LEGS) {
     OPP[leg.id][home] = { opp: away, home: true, neutral };
   }
 }
+// NFL week of each leg (the holiday legs are carved out of Weeks 12 and 16), and who plays in each week
+export const nflWeek = (leg) => (leg.id === "TG" ? 12 : leg.id === "XM" ? 16 : +leg.label);
+const TEAMS_IN_WEEK = {};
+for (const leg of LEGS) { const wk = (TEAMS_IN_WEEK[nflWeek(leg)] ||= new Set()); for (const t of Object.keys(OPP[leg.id])) wk.add(t); }
+// A team off a bye is worth about a point more to the market (2025 closing lines: +1.1 pts over 26 games). +1 when
+// the team had last week off and its opponent did not, −1 the other way, 0 otherwise.
+export const REST_PTS = 1;
+export function restEdge(legId, team) {
+  const leg = LEGS.find((l) => l.id === legId), g = OPP[legId]?.[team]; if (!leg || !g) return 0;
+  const n = nflWeek(leg); if (n <= 1) return 0;
+  const off = (t) => (TEAMS_IN_WEEK[n - 1]?.has(t) ? 0 : 1);
+  return off(team) - off(g.opp);
+}
 export const TG_TEAMS = new Set(Object.keys(OPP.TG));
 export const XM_TEAMS = new Set(Object.keys(OPP.XM));
 
