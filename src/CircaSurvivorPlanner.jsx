@@ -907,7 +907,7 @@ const CSS = `
 .csp .sum tr.out td > * { opacity:.5; }
 .csp .sum tr.out td.entry .nm { text-decoration:line-through; text-decoration-thickness:1px; }
 .csp .sum tr.out.sel td > * { opacity:.62; }
-.csp .sum td.entry .tag { margin-left:7px; font-size:10px; font-weight:500; color:var(--red); letter-spacing:.01em; }
+.csp .sum td.entry .tag { margin-right:7px; font-size:10px; font-weight:500; color:var(--red); letter-spacing:.01em; }
 /* selected entry: the same wash across the row inside a soft blue frame */
 .csp .sum tr.sel td { background:var(--sel-bg); border-top:2px solid var(--sel-line); border-bottom:2px solid var(--sel-line); }
 .csp .sum tr.sel td.entry { color:var(--ink); font-weight:600; border-left:2px solid var(--sel-line); }
@@ -1089,6 +1089,7 @@ const CSS = `
   .csp .L.team, .csp .L.entry { left:218px; width:64px !important; min-width:64px !important; max-width:64px; overflow:hidden; text-overflow:ellipsis; }
   .csp .L.team { padding:0 4px 0 8px; }
   .csp .L.entry { padding:0 6px 0 0; font-size:10px; }
+  .csp .sum td.entry .tag { display:none; }   /* no room at phone width; the strikethrough says it */
   .csp th.L.team { padding-left:8px; }
   .csp .team .used, .csp .team .hd { display:none; }
   .csp .L.pctl { width:218px; min-width:218px; }
@@ -1303,6 +1304,14 @@ export default function CircaSurvivorPlanner() {
 
   const entry = entries[active] || { name: "", picks: {} };
   const standing = useMemo(() => entries.map((e) => entryStatus(e, data.actuals)), [entries, data.actuals]);
+  const clearable = entries.reduce((n, e, i) => n + (standing[i]?.alive === false ? 0 : LEGS.filter((l) => e.picks[l.id] && !data.actuals[l.id]).length), 0);
+  const clearAll = () => {
+    if (!canEdit || !clearable) return;
+    if (!window.confirm(`Clear all ${clearable} pick${clearable === 1 ? "" : "s"} that are not locked yet?`)) return;
+    setJson("picks", (p) => ({ ...p, entries: p.entries.map((e, i) => { if (standing[i]?.alive === false) return e; const picks = { ...e.picks }; for (const l of LEGS) if (!data.actuals[l.id]) delete picks[l.id]; return { ...e, picks }; }) }));
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => save("picks", `Picks: clear all ${clearable} unlocked`), 800);
+  };
   const activeOut = standing[active] && !standing[active].alive;
   const canPick = canEdit && !activeOut;
   const usedBy = useMemo(() => { const m = {}; for (const [leg, team] of Object.entries(entry.picks)) m[team] = leg; return m; }, [entry]);
@@ -1517,6 +1526,7 @@ export default function CircaSurvivorPlanner() {
                 {LEGS.map((l) => <option key={l.id} value={l.id}>{legLabel(l)}</option>)}
               </select>
               <button className={"ghost" + (audit ? " on" : "")} onClick={() => setAudit((a) => !a)} title="How W%, P%, EV, DILI and the ratings are calculated for this week">Model details {audit ? "▴" : "▾"}</button>
+              {canEdit && clearable > 0 && <button className="ghost" onClick={clearAll} title="Remove every pick Circa has not locked yet, on every live entry">Clear all</button>}
             </div>
             <div className="row">
               {canEdit && <button className="btn" onClick={updateLines} disabled={updating} title="Pull fresh moneylines from the sportsbooks now (otherwise twice a day)">{updating ? "Updating…" : "Update lines"}</button>}
@@ -1533,7 +1543,7 @@ export default function CircaSurvivorPlanner() {
             {entries.map((e, i) => (
               <tr key={"s" + i} className={(i === active ? "sel" : "") + (standing[i]?.alive === false ? " out" : "")} style={{ "--top": `calc(var(--th) + ${i} * var(--rh))` }}>
                 <td className="L entry" title={standing[i]?.alive === false ? `Out in ${legLabel(standing[i].leg)}` : ""}>
-                  <span className="nm">{e.name}</span>{standing[i]?.alive === false && <span className="tag">out {standing[i].leg.label}</span>}
+                  {standing[i]?.alive === false && <span className="tag">out {standing[i].leg.label}</span>}<span className="nm">{e.name}</span>
                 </td>
                 {LEGS.map((l) => {
                   const t = e.picks[l.id], clr = t && canEdit && !data.actuals[l.id] && standing[i]?.alive !== false;
