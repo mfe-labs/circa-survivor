@@ -336,6 +336,8 @@ function seasonTable(data, params) {
       const useEv = !!near[l.id]; if (useEv) computeEV(l.id, rows);
       ALL_TEAMS.forEach((t, i) => { const r = rows[t]; if (r.win == null) return; z[k][i] = probit(r.win); sd[k][i] = noiseSd(k - nowIdx + 1, !!marketLine(l.id, t, data)); ff[k][i] = useEv && k === nowIdx && r.ev != null ? Math.log(r.ev / r.win) : 0; });
     });
+    // a Thursday game already played (known from the Splash reading before Circa posts) can no longer be picked
+    if (nowIdx < LEGS.length) { const l0 = LEGS[nowIdx]; for (const t of Object.keys(decidedGames(l0.id, data.actuals[l0.id], splashAnchor(l0.id, data)))) z[nowIdx][ALL_TEAMS.indexOf(t)] = NaN; }
     const r = seededRng(20261), eps = [];
     for (let s = 0; s < MAP_SAMPLES; s++) { const e = LEGS.map(() => new Float64Array(n)); for (let k = nowIdx; k < LEGS.length; k++) for (let i = 0; i < n; i++) e[k][i] = gauss(r); eps.push(e); }
     return { z, sd, ff, eps, nowIdx, near };
@@ -382,6 +384,30 @@ function bestMap(tab, legIdx, burnedIdx, sample) {
   });
   return { V, path };
 }
+// The plan with the best chance of winning every week. Survival multiplies, so a plan is judged on the product of
+// its weeks' win chances, never on per-week votes: an 87% week cannot bank its surplus, and a 46% week is close to
+// a coin flip on the whole season. Each week's win chance is averaged over how far its line can still move
+// (E[Φ(z + σε)] = Φ(z / √(1 + σ²))), and with independent weeks the average of the product is the product of the
+// averages, so one assignment finds the plan that does best across every jiggled season, not just the 96 drawn.
+// The current week keeps its field-aware EV adjustment, as in the map behind the forfeit.
+const expWin = (tab, k, i) => normCdf(tab.z[k][i] / Math.sqrt(1 + tab.sd[k][i] * tab.sd[k][i]));
+function survivalPath(tab, legIdx, burnedIdx) {
+  const teams = []; for (let i = 0; i < ALL_TEAMS.length; i++) if (!burnedIdx[i]) teams.push(i);
+  const BIG = -Math.log(MAP_FLOOR);
+  const cost = legIdx.map((k) => teams.map((i) => (Number.isNaN(tab.z[k][i]) ? BIG : -(Math.log(expWin(tab, k, i)) + tab.ff[k][i]))));
+  const a = legIdx.length && teams.length >= legIdx.length ? hungarian(cost) : null;
+  return legIdx.map((k, j) => {
+    const dead = !a || cost[j][a[j]] >= BIG, i = dead ? -1 : teams[a[j]];
+    return { k, leg: LEGS[k], team: dead ? null : ALL_TEAMS[i], win: dead ? null : normCdf(tab.z[k][i]), ew: dead ? null : expWin(tab, k, i) };
+  });
+}
+// the strongest team a plan leaves free in a week (its backup there)
+function freeBest(tab, k, used, burnedIdx) {
+  let best = null;
+  ALL_TEAMS.forEach((t, i) => { if (burnedIdx[i] || used.has(t) || Number.isNaN(tab.z[k][i])) return; const e = expWin(tab, k, i); if (!best || e > best.ew) best = { team: t, ew: e, win: normCdf(tab.z[k][i]) }; });
+  return best;
+}
+const holidayPool = (l, burned) => (l.holiday ? { pool: (l.id === "TG" ? TG_TEAMS : XM_TEAMS).size, poolLeft: [...(l.id === "TG" ? TG_TEAMS : XM_TEAMS)].filter((t) => !burned.has(t)).length } : { pool: 0, poolLeft: 0 });
 const deadLeg = (tab, legIdx, bidx) => { const k = legIdx.find((k) => !ALL_TEAMS.some((t, i) => !bidx[i] && !Number.isNaN(tab.z[k][i]))); return k == null ? null : LEGS[k]; };
 const withBurned = (bi, team) => { const b = bi.slice(); b[ALL_TEAMS.indexOf(team)] = true; return b; };
 // Strength forfeit. The map forfeit assumes the plan survives: inside every noisy season the solver re-plans all
@@ -480,17 +506,15 @@ export function planMap(data, picks, params = PRIOR) {
     return out;
   });
   const now = legIdx.length ? LEGS[legIdx[0]] : null;
-  const free = !now ? [] : Object.keys(OPP[now.id]).filter((t) => !bi[ALL_TEAMS.indexOf(t)] && (lineFor(now.id, t, data)?.win ?? 0) >= 0.55 )
+  const free = !now ? [] : Object.keys(OPP[now.id]).filter((t) => !bi[ALL_TEAMS.indexOf(t)] && !Number.isNaN(tab.z[legIdx[0]][ALL_TEAMS.indexOf(t)]) && (lineFor(now.id, t, data)?.win ?? 0) >= 0.55 )
     .map((t) => ({ team: t, win: lineFor(now.id, t, data).win, onMap: (onMap[t] || 0) / MAP_SAMPLES })).sort((a, b) => a.onMap - b.onMap || b.win - a.win).slice(0, 3);
   const live = plan.filter((p) => p.team);
   return { plan, byLeg, nowLeg: now || null, currentLeg: LEGS[tab.nowIdx] || null, winOut: live.length === plan.length ? live.reduce((x, p) => x * p.win, 1) : 0, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), free, samples: MAP_SAMPLES };
 }
-// Claude's DILI Map: the Planner's rule applied week by week. Score the next open week exactly as the Planner
-// does (EV ÷ forfeit, with the strength half), take the top DILI, spend that team, move to the next week and
-// repeat to the end, as if nothing changes. The current week therefore always matches the Planner. Only the
-// current week scores on EV; later weeks score on win chance ÷ forfeit, because the projected crowds further out
-// are too lopsided to trust (they ranked a 29% NYG third in Week 7). Weeks already planned are left out of each
-// later forfeit's map.
+// Claude's DILI Map: the Planner's pick this week (top DILI: EV ÷ forfeit, with the strength half), then the rest of
+// the season planned together as the plan with the best chance of winning every week given that pick. The current
+// week therefore always matches the Planner. Later weeks score on win chance alone, because the projected crowds
+// further out are too lopsided to trust (they ranked a 29% NYG third in Week 7).
 // Claude Locks: the weeks where the DILI Map and the 96 Map name the same team; every other week is left empty.
 export function locksPicks(dili, cons) {
   const by96 = Object.fromEntries(cons.plan.map((p) => [p.leg.id, p.team]));
@@ -500,8 +524,10 @@ export function diliPlan(data, picks, params = PRIOR) {
   const tab = seasonTable(data, params);
   const burned = spentTeams(data, picks), skip = new Set(), plan = [];
   let cheap = [];
-  for (let k = tab.nowIdx; k < LEGS.length; k++) {
-    const l = LEGS[k], now = k === tab.nowIdx, rows = {};
+  // this week, scored exactly as the Planner scores it
+  const k = tab.nowIdx;
+  if (k < LEGS.length) {
+    const l = LEGS[k], now = true, rows = {};
     // the current week scores on True Win % like the Planner; if the books have posted nothing yet, fall back to projections
     const strict = now && Object.keys(OPP[l.id]).some((t) => marketLine(l.id, t, data));
     for (const t of ALL_TEAMS) { const ln = OPP[l.id][t] ? (strict ? marketLine(l.id, t, data) : lineFor(l.id, t, data)) : null; rows[t] = { win: ln?.win ?? null, pick: 0 }; }
@@ -518,32 +544,36 @@ export function diliPlan(data, picks, params = PRIOR) {
     const cands = Object.keys(OPP[l.id]).filter((t) => rows[t].dili != null).sort((a, b) => rows[b].dili - rows[a].dili);
     const [t1, t2] = cands, r1 = t1 ? rows[t1] : null, r2 = t2 ? rows[t2] : null;
     plan.push({ leg: l, team: t1 || null, win: r1?.win ?? null, dili: r1?.dili ?? null, forfeit: r1?.forfeit ?? null, backup: t2 || null, backupWin: r2?.win ?? null, backupDili: r2?.dili ?? null, ev,
-      pool: l.holiday ? [...(l.id === "TG" ? TG_TEAMS : XM_TEAMS)].length : 0, poolLeft: l.holiday ? [...(l.id === "TG" ? TG_TEAMS : XM_TEAMS)].filter((t) => !burned.has(t)).length : 0 });
-    if (now) cheap = Object.keys(OPP[l.id]).filter((t) => rows[t].forfeit != null && Number.isFinite(rows[t].forfeit) && (rows[t].win ?? 0) >= 0.55).map((t) => ({ team: t, win: rows[t].win, forfeit: rows[t].forfeit })).sort((a, b) => a.forfeit - b.forfeit || b.win - a.win).slice(0, 3);
+      ...holidayPool(l, burned) });
+    cheap = Object.keys(OPP[l.id]).filter((t) => rows[t].forfeit != null && Number.isFinite(rows[t].forfeit) && (rows[t].win ?? 0) >= 0.55).map((t) => ({ team: t, win: rows[t].win, forfeit: rows[t].forfeit })).sort((a, b) => a.forfeit - b.forfeit || b.win - a.win).slice(0, 3);
     if (t1) burned.add(t1);
-    skip.add(l.id);
+  }
+  // every later week together: the plan with the best chance of winning out, given this week's pick. Picking them
+  // one week at a time (the best-looking team each week) was tried and strands later weeks the way the old 96 Map did.
+  const rest = LEGS.map((l, i) => i).filter((i) => i > tab.nowIdx), bi = ALL_TEAMS.map((t) => burned.has(t));
+  const path = survivalPath(tab, rest, bi), used = new Set(path.map((q) => q.team).filter(Boolean)), before = new Set(burned);
+  for (const q of path) {
+    const alt = freeBest(tab, q.k, used, bi);
+    plan.push({ leg: q.leg, team: q.team, win: q.win, dili: null, forfeit: null, backup: alt?.team || null, backupWin: alt?.win ?? null, backupDili: null, ev: false, planned: true, ...holidayPool(q.leg, before) });
+    if (q.team) before.add(q.team);
   }
   const live = plan.filter((p) => p.team);
   return { plan, currentLeg: LEGS[tab.nowIdx] || null, winOut: live.length === plan.length && plan.length ? live.reduce((x, p) => x * p.win, 1) : 0, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), cheap };
 }
-// Claude's 96 Map: the plan the jiggled seasons agree on. Over the 96 noisy solves, count how often each team
-// filled each week, then pick the one assignment (one team per week, no team twice) with the highest total count,
-// win chance breaking ties. Taking the biggest count first and repeating was tried and strands later weeks with
-// scraps once their favorites are grabbed early. Each row's count is the number of seasons that put that team
-// there, and the backup is the best team still free for that week by the same score.
+// Claude's 96 Map: the plan with the best chance of winning every week across the jiggled seasons (survivalPath),
+// with the 96 noisy solves supplying how often each pick held its week. It used to be assembled from those votes,
+// one week at a time by count, which never multiplies anything out: it took the Rams at 87% in Week 6 and paid with
+// Pittsburgh at 46% on Thanksgiving, a plan about 15% less likely to win out on fresh seasons. The backup is the
+// strongest team the plan leaves free that week.
 export function consensusPlan(data, picks, params = PRIOR) {
-  const base = planMap(data, picks, params);
-  const legs = base.plan.map((p) => p.leg), byLeg = base.byLeg, used = new Set(), pick = new Array(legs.length).fill(null);
-  const spent = spentTeams(data, picks), teams = ALL_TEAMS.filter((t) => !spent.has(t));
-  if (legs.length && teams.length >= legs.length) {
-    const cost = legs.map((l, j) => teams.map((t) => { const w = OPP[l.id][t] ? lineFor(l.id, t, data)?.win : null; return w ? -((byLeg[j][t] || 0) + 0.5 * w) : 1e6; }));
-    hungarian(cost).forEach((c, j) => { if (cost[j][c] < 1e6) { pick[j] = { team: teams[c], held: byLeg[j][teams[c]] || 0 }; used.add(teams[c]); } });
-  }
-  const plan = legs.map((l, j) => {
-    const p = pick[j], win = p ? lineFor(l.id, p.team, data)?.win ?? null : null;
-    const alt = teams.filter((t) => t !== p?.team && !used.has(t) && OPP[l.id][t] && lineFor(l.id, t, data)?.win).map((t) => ({ t, n: byLeg[j][t] || 0, w: lineFor(l.id, t, data).win })).sort((a, b) => (b.n + 0.5 * b.w) - (a.n + 0.5 * a.w))[0] || null;
-    return { leg: l, team: p?.team || null, win, held: p?.held ?? 0, samples: MAP_SAMPLES, backup: alt ? alt.t : null, backupWin: alt ? alt.w : null, backupHeld: alt ? alt.n : 0,
-      pool: l.holiday ? [...(l.id === "TG" ? TG_TEAMS : XM_TEAMS)].length : 0, poolLeft: l.holiday ? [...(l.id === "TG" ? TG_TEAMS : XM_TEAMS)].filter((t) => !spent.has(t)).length : 0 };
+  const base = planMap(data, picks, params), tab = seasonTable(data, params), legIdx = mapLegs(tab, null);
+  const spent = spentTeams(data, picks), bi = ALL_TEAMS.map((t) => spent.has(t));
+  const path = survivalPath(tab, legIdx, bi), used = new Set(path.map((q) => q.team).filter(Boolean)), before = new Set(spent);
+  const plan = path.map((q, j) => {
+    const alt = freeBest(tab, q.k, used, bi);
+    const row = { leg: q.leg, team: q.team, win: q.win, held: q.team ? base.byLeg[j][q.team] || 0 : 0, samples: MAP_SAMPLES, backup: alt?.team || null, backupWin: alt?.win ?? null, backupHeld: alt ? base.byLeg[j][alt.team] || 0 : 0, ...holidayPool(q.leg, before) };
+    if (q.team) before.add(q.team);
+    return row;
   });
   const live = plan.filter((p) => p.team);
   return { plan, currentLeg: base.currentLeg, nowLeg: base.nowLeg, winOut: live.length === plan.length && plan.length ? live.reduce((x, p) => x * p.win, 1) : 0, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), free: base.free, samples: MAP_SAMPLES };
@@ -784,7 +814,7 @@ export function entryStatus(entry, actualLegs) {
   return { alive: true, leg: null };
 }
 
-export { capShares, projectField, lineFor, modelPickRange, fvAt, bandError, strengthWeight, futureFor, marketLine, splashAnchor, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
+export { seasonTable, mapLegs, expWin, survivalPath, capShares, projectField, lineFor, modelPickRange, fvAt, bandError, strengthWeight, futureFor, marketLine, splashAnchor, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
 
 const CSS = `
 /* ---- tokens: paper, ink, one green ---- */
@@ -1893,7 +1923,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
           ? <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title="What Claude's DILI Map has for this week">DILI Map</th><th title="What Claude's 96 Map has for this week">96 Map</th><th>Notes</th></tr>
           : tab === "96"
           ? <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title={`How many of ${cons.samples} jiggled seasons put this team here`}>Held</th><th title="Runner-up by count, not used elsewhere on this map">Backup</th><th>Why</th></tr>
-          : <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title="DILI for that week, scored as the Planner scores it">DILI</th><th title="Second-best DILI that week">Backup</th><th>Why</th></tr>}</thead>
+          : <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title="DILI for that week, scored as the Planner scores it">DILI</th><th title="This week: second-best DILI. Later weeks: the strongest team the plan leaves free">Backup</th><th>Why</th></tr>}</thead>
         <tbody>
           {LEGS.map((l) => {
             const p = planned[l.id];
@@ -1934,6 +1964,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
             let why;
             if (!p.team) why = "Nothing eligible left for this week: it would be a forfeit.";
             else if (tab === "96") why = (p.held >= cons.samples / 2 ? "Solid." : p.held >= cons.samples / 3 ? "Leaning." : "Toss-up.") + holidayNote(p) + soft;
+            else if (p.planned) why = ((p.backup ? "" : "Nothing else is free this week.") + holidayNote(p) + soft).trim();
             else why = (p.backup == null ? "Only option." : p.dili - p.backupDili < 0.03 ? `Close call, ${p.backup} is ${(p.dili - p.backupDili).toFixed(2)} behind.` : `Clear, ${(p.dili - p.backupDili).toFixed(2)} ahead of ${p.backup}.`) + holidayNote(p) + soft;
             return (
               <tr key={l.id} className={cls + (p.team ? "" : " dead")}>
@@ -1942,7 +1973,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
                 <td>{p.team ? gameText(l.id, p.team, data) : ""}</td>
                 <td className={p.win != null && p.win < 0.6 ? "weak" : ""}>{pct0(p.win)}</td>
                 <td>{tab === "96" ? (p.team ? `${p.held}/${p.samples}` : "") : (p.dili != null ? p.dili.toFixed(2) : "")}</td>
-                <td className="bk">{p.backup ? <>{teamChip(p.backup, true)} {tab === "96" ? `${p.backupHeld}/${p.samples}` : p.backupDili.toFixed(2)}</> : "–"}</td>
+                <td className="bk">{p.backup ? <>{teamChip(p.backup, true)} {tab === "96" ? `${p.backupHeld}/${p.samples}` : p.backupDili != null ? p.backupDili.toFixed(2) : pct0(p.backupWin)}</> : "–"}</td>
                 <td className="why" title={why}>{why}</td>
               </tr>
             );

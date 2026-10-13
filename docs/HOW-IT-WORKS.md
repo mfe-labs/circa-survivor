@@ -124,13 +124,19 @@ fetch fails, last season's market ratings regressed 40% toward average are the f
   being scored. A week locks for planning the moment its Selections PDF is in, even with games pending; before that
   a pick entered for it is soft (spentTeams = picks in weeks with actuals). The Planner's selected week still follows
   openLeg() (first week not completely over).
-- `diliPlan(data, picks, params)` is Claude's DILI Map: from the first open leg, build rows as the Planner does
-  (market win + model shares for the current leg, win chance alone for every later leg),
-  `computeDili` with the already-planned legs skipped from the forfeit map, take the top, spend it, repeat. Also
-  returns winOut, weakest, and `cheap` (lowest forfeit among this week's favorites).
-- `consensusPlan(data, picks, params)` is Claude's 96 Map: the one assignment (hungarian) over `planMap().byLeg`
-  counts with the highest total agreement, win chance breaking ties; backup = best team still free that week by the
-  same score.
+- `survivalPath(tab, legIdx, burnedIdx)`: the assignment (hungarian) maximizing Σ log E[win] + ff, where
+  E[win] = Φ(z / √(1 + σ²)) averages each week's win chance over its line noise (`expWin`). Weeks are independent,
+  so this maximizes the expected chance of winning every week over all jiggled seasons. `freeBest` gives the
+  strongest team a plan leaves free in a week (its backup).
+- `diliPlan(data, picks, params)` is Claude's DILI Map: the current leg scored as the Planner does (market win + model
+  or actual shares, finals decided, `computeDili`), top DILI taken; then `survivalPath` over every later leg with
+  that team spent (rows `planned: true`, no DILI). Also returns winOut, weakest, and `cheap` (lowest forfeit among
+  this week's favorites). It used to pick later legs greedily one at a time; on fresh seasons that plan won out
+  ~17% less often than the joint plan.
+- `consensusPlan(data, picks, params)` is Claude's 96 Map: `survivalPath` over all open legs; Held counts from
+  `planMap().byLeg`; backup = `freeBest`. It used to maximize total per-week vote counts, which never multiplies
+  win chances and took LAR 87% in W6 for PIT 46% on Thanksgiving (~15% worse on fresh seasons).
+- `seasonTable` blocks both teams of a Thursday game already decided (Splash reading) in the current leg.
 - `locksPicks(dili, cons)` is Claude Locks: the weeks where both maps name the same team; shown through
   `customSummary` like a saved map, read-only.
 - `planMap(data, picks, params)` is the single-solve map underneath (also used by DILI's tooltips): the projected map, per-leg first-choice counts across the 96

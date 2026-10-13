@@ -1,5 +1,6 @@
 // DILI: EV net of what the team is worth to the rest of the entry's season (the map); and the futures-market prior.
-import { buildData, computeEV, computeDili, planMap, spentTeams, customSummary, fitParams, fvFor, strengthWeight, futureFor, diliPlan, consensusPlan, locksPicks, modelPick, marketLine, lineFor } from "../src/CircaSurvivorPlanner.jsx";
+import { buildData, computeEV, computeDili, planMap, spentTeams, customSummary, fitParams, fvFor, strengthWeight, futureFor, diliPlan, consensusPlan, locksPicks, modelPick, marketLine, lineFor, seasonTable, mapLegs, expWin, survivalPath } from "../src/CircaSurvivorPlanner.jsx";
+import splash from "../data/splash.json";
 import { priorFromFutures } from "../src/ratings.js";
 import { OPP, ALL_TEAMS, LEGS, TG_TEAMS, XM_TEAMS } from "../src/schedule.js";
 import picks from "../data/picks.json"; import actuals from "../data/actuals.json"; import odds from "../data/odds.json"; import ratings from "../data/ratings.json";
@@ -112,6 +113,48 @@ ok("future value on a readable scale", fvFor("W2", "KC", data) < 18 && fvFor("W2
   ok("a team spent in a finished week is a conflict", sp.rows.find((r) => r.leg.id === "W6").spent?.id === "W1" && sp.usedAt("KC", "W7") === "used W1");
   const gap = customSummary(d, { picks: entryP }, { picks: { W3: picks.W3 } }, pl);
   ok("empty weeks make the map incomplete, not wrong", gap.conflicts === 0 && gap.winOut === null && /no pick/.test(gap.winNote));
+})();
+
+// the maps are judged on survival: every planned week optimal, nothing beats them on fresh seasons
+(() => {
+  const real = buildData({ picks, actuals, odds, ratings, splash }), params = fitParams(real), e = picks.entries[0];
+  const tab = seasonTable(real, params), legIdx = mapLegs(tab, null), spent = spentTeams(real, e.picks);
+  const dp = diliPlan(real, e.picks, params), cp = consensusPlan(real, e.picks, params), pm = planMap(real, e.picks, params);
+  const idx = (t) => ALL_TEAMS.indexOf(t), K = (id) => LEGS.findIndex((l) => l.id === id);
+  const cost = (k, t) => { const i = idx(t), z = tab.z[k][i]; return Number.isNaN(z) ? Infinity : -(Math.log(expWin(tab, k, i)) + tab.ff[k][i]); };
+  // no single swap improves a plan: neither an unused team in one week nor trading two weeks' teams
+  const swapOk = (rows, fixed) => {
+    const used = new Set([...rows.map((q) => q.team), ...fixed]), bad = [];
+    rows.forEach((q) => { const k = K(q.leg.id), c = cost(k, q.team); for (const t of Object.keys(OPP[q.leg.id])) if (!used.has(t) && !spent.has(t) && cost(k, t) < c - 1e-9) bad.push(`${q.leg.id} ${q.team}→${t}`); });
+    for (let a = 0; a < rows.length; a++) for (let b = a + 1; b < rows.length; b++) { const ka = K(rows[a].leg.id), kb = K(rows[b].leg.id); if (cost(ka, rows[b].team) + cost(kb, rows[a].team) < cost(ka, rows[a].team) + cost(kb, rows[b].team) - 1e-9) bad.push(`swap ${rows[a].leg.id}/${rows[b].leg.id}`); }
+    return bad;
+  };
+  const b96 = swapOk(cp.plan, []), bDili = swapOk(dp.plan.filter((q) => q.planned), [dp.plan[0].team]);
+  ok("96 Map: no swap or unused team improves any week", b96.length === 0, b96.join(", "));
+  ok("DILI Map: after this week, no swap or unused team improves any week", bDili.length === 0, bDili.join(", "));
+  ok("DILI Map plans every later week together", dp.plan.slice(1).every((q) => q.planned) && dp.plan[0].dili != null);
+  // fresh jiggled seasons the maps never saw
+  let seed = 4242; const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return (seed + 0.5) / 2147483648; };
+  const gauss = () => Math.sqrt(-2 * Math.log(rnd())) * Math.cos(2 * Math.PI * rnd());
+  const ncdf = (x) => { const s = Math.sign(x), a = Math.abs(x) / Math.SQRT2, t = 1 / (1 + 0.3275911 * a); return 0.5 * (1 + s * (1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-a * a))); };
+  const plans = { "96": cp.plan.map((q) => q.team), single: pm.plan.map((q) => q.team) }, tot = { "96": 0, single: 0 }, N = 3000;
+  for (let n = 0; n < N; n++) { const eps = legIdx.map(() => ALL_TEAMS.map(gauss)); for (const [m, pl] of Object.entries(plans)) { let pr = 1; pl.forEach((t, j) => { const k = legIdx[j], i = idx(t); pr *= ncdf(tab.z[k][i] + tab.sd[k][i] * eps[j][i]); }); tot[m] += pr / N; } }
+  ok("96 Map wins out at least as often as the single solve on fresh seasons", tot["96"] >= tot.single * 0.995, `96 ${(100 * tot["96"]).toFixed(3)}% vs single ${(100 * tot.single).toFixed(3)}%`);
+  // the failure this replaced: an underdog while a strong team sits unused
+  const dog = (m) => m.plan.filter((q) => q.win != null && q.win < 0.5 && Object.keys(OPP[q.leg.id]).some((t) => !m.plan.some((r) => r.team === t) && !spent.has(t) && (lineFor(q.leg.id, t, real)?.win ?? 0) >= 0.6)).map((q) => `${q.leg.id} ${q.team}`);
+  ok("no map takes an underdog while a 60% team is unused", dog(cp).length === 0 && dog(dp).length === 0, [...dog(cp), ...dog(dp)].join(", "));
+  // a Thursday game already played can no longer be picked this week
+  const now = LEGS[tab.nowIdx], thu = now && Object.keys(OPP[now.id]).find((t) => OPP[now.id][t].home === false);
+  if (now && thu) {
+    const opp = OPP[now.id][thu].opp, sp = JSON.parse(JSON.stringify(splash));
+    sp.weeks[now.id] = { thursday: { asOf: "2026-10-16T00:30:00Z", alive: 2500, picks: { [thu]: 100, [opp]: 100 }, final: { [thu]: "L", [opp]: "W" } } };
+    const d2 = buildData({ picks, actuals, odds, ratings, splash: sp }), p2 = fitParams(d2);
+    const picksNow = [diliPlan(d2, e.picks, p2), consensusPlan(d2, e.picks, p2), planMap(d2, e.picks, p2)].map((m) => m.plan[0].team);
+    const tab2 = seasonTable(d2, p2), kk = tab2.nowIdx, later = LEGS.findIndex((l, i) => i > kk && OPP[l.id][thu]);
+    ok("a played Thursday game is blocked this week only", Number.isNaN(tab2.z[kk][idx(thu)]) && Number.isNaN(tab2.z[kk][idx(opp)]) && !Number.isNaN(tab2.z[later][idx(thu)]) && !Number.isNaN(tab.z[kk][idx(thu)]));
+    ok("cheapest-to-burn never lists a played Thursday team", planMap(d2, e.picks, p2).free.every((f) => f.team !== thu && f.team !== opp));
+    ok("no map picks a team whose Thursday game is over", picksNow.every((t) => t !== thu && t !== opp), `${now.id}: ${thu}/${opp} played; maps pick ${picksNow.join(", ")}`);
+  }
 })();
 
 // the two Claude maps
