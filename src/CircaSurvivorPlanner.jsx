@@ -592,14 +592,16 @@ export function rulesPlan(data, picks, params = PRIOR, hold = RULE_HOLD, forfeit
 // This week's pick is the Planner's rule, EV ÷ forfeit, with the forfeit from the playouts (the base survival of
 // the later weeks ÷ the survival with the team spent). Later rows show the team the playouts used most often in that
 // week, with the share; the Christmas row shows the spread of options the plan keeps.
-const simKey = (spent, params, n) => `${[...spent].sort().join(",")}|${params.a}|${params.b}|${params.c ?? 0}|${n}`;
+// the key names everything the playouts depend on: the entry's spent teams, the fit, and the data snapshot (lines,
+// ratings, which weeks have Circa's picks, this week's Thursday reading), so a cached result is never reused on new data
+const simKey = (data, spent, params, n) => { const now = LEGS[lockedIdx(data)]?.id; return `${[...spent].sort().join(",")}|${params.a}|${params.b}|${params.c ?? 0}|${n}|${data.oddsAt}|${data.ratingsAt}|${Object.keys(data.actuals || {}).join(",")}|${data.splash?.weeks?.[now]?.thursday?.asOf || ""}`; };
 function simInputs(data, picks, params, n) {
   const spent = spentTeams(data, picks), tab = seasonTable(data, params), legIdx = mapLegs(tab, null);
   if (!legIdx.length) return null;
   const burned = ALL_TEAMS.map((t) => (spent.has(t) ? 1 : 0)), now = legIdx[0];
   const candidates = ALL_TEAMS.map((t, i) => i).filter((i) => !burned[i] && !Number.isNaN(tab.z[now][i]));
   const sdByLead = Array.from({ length: 24 }, (_, L) => (L === 0 ? 0 : SIM_SD(L)));
-  return { key: simKey(spent, params, n), spent, tab, legIdx, msg: { z: legIdx.map((k) => tab.z[k]), zKeys: legIdx, ff: tab.ff[now], legs: legIdx, nTeams: ALL_TEAMS.length, burned, sdByLead, opp: legIdx.map((k) => SIM_OPP[k]), candidates, n, seed: SIM_SEED } };
+  return { key: simKey(data, spent, params, n), spent, tab, legIdx, msg: { z: legIdx.map((k) => tab.z[k]), zKeys: legIdx, ff: tab.ff[now], legs: legIdx, nTeams: ALL_TEAMS.length, burned, sdByLead, opp: legIdx.map((k) => SIM_OPP[k]), candidates, n, seed: SIM_SEED } };
 }
 // the worker gets rows keyed by leg index; rebuild that shape for the engine
 const simArgs = (m) => { const z = {}, ff = {}, opp = {}; m.zKeys.forEach((k, j) => { z[k] = m.z[j]; opp[k] = m.opp[j]; }); ff[m.legs[0]] = m.ff; return { z, ff, legs: m.legs, nTeams: m.nTeams, burned: m.burned, sdLead: (L) => m.sdByLead[Math.min(L, m.sdByLead.length - 1)], opp, candidates: m.candidates, n: m.n, seed: m.seed }; };
@@ -1451,7 +1453,7 @@ export default function CircaSurvivorPlanner() {
   const params = useMemo(() => fitParams(data), [data]);
   // the playout forfeit beside the current one, for the comparison phase (tooltips and Model details only)
   const simNow = useSimPlan(data, entry?.picks, params), simCurrent = legId === LEGS[lockedIdx(data)]?.id, simRows = entry && simCurrent && simNow ? simNow.rows : {};
-  const simForfeits = simCurrent ? forfeitsOf(simNow) : null;
+  const simForfeits = useMemo(() => (simCurrent ? forfeitsOf(simNow) : null), [simNow, simCurrent]);
   const merr = useMemo(() => modelError(data, params), [data, params]);
   // per-team stats for selected leg (also computed on the previous refresh's data, for the deltas)
   const burned = useMemo(() => { const b = spentTeams(data, entry.picks); b.delete(entry.picks[legId]); return b; }, [data, entry, legId]);
