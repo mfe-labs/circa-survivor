@@ -2010,7 +2010,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
     : tab === "rules"
     ? { winOut: rules.winOut, weakest: rules.weakest, cheapLeg: rules.currentLeg, rule: true }
     : tab === "sim"
-    ? { winOut: res.winOut || null, winNote: sim ? null : "running the playouts…", winCap: "expected chance of winning every week, with the lines free to move and each week re-picked as they do", weakest: res.weakest, cheapLeg: res.currentLeg, simBox: true }
+    ? { winOut: res.winOut || null, winNote: sim ? null : "running the playouts…", winCap: "expected chance of winning every week as lines move and picks adjust", weakest: res.weakest, cheapLeg: res.currentLeg, simBox: true }
     : tab === "96"
     ? { winOut: cons.winOut, weakest: cons.weakest, cheapLeg: cons.nowLeg,
         cheap: cons.free.map((f) => <span key={f.team} title={`${f.team} is ${pct0(f.win)} to win this week and gets used in a later week in ${Math.round(100 * f.onMap)}% of the ${cons.samples} seasons`}>{teamChip(f.team, true)} <span className="mut">({pct0(f.win)})</span> {pct0(f.onMap)}</span>),
@@ -2048,7 +2048,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
       <div className="strip">
         <div className="fig"><div className={"v" + (box.winOut == null && box.winNote ? " bad" : "")}>{box.winOut != null ? (100 * box.winOut).toFixed(1) + "%" : box.winNote ? "not valid" : "–"}</div><div className="k">{box.winOut == null && box.winNote ? box.winNote : box.winCap || "chance of winning every week on this map"}</div></div>
         <div className="fig"><div className="v sm">{box.weakest.map((p) => <span key={p.leg.id}>{shortLeg(p.leg)} {pct0(p.win)}</span>)}</div><div className="k">weakest weeks, where the entry most likely dies</div></div>
-        {box.simBox ? <div className="fig"><div className="v sm">{res.xmas.length ? res.xmas.map(([t, x]) => <span key={t}>{teamChip(t, true)} <span className="mut">{pct0(x)}</span></span>) : "–"}</div><div className="k">Christmas: which team the playouts ended up using there, and how often (the options the plan keeps open)</div></div>
+        {box.simBox ? <div className="fig"><div className="v sm">{res.xmas.length ? res.xmas.map(([t, x]) => <span key={t}>{teamChip(t, true)} <span className="mut">{pct0(x)}</span></span>) : "–"}</div><div className="k">Christmas options kept: how often the playouts used each team there</div></div>
         : box.rule ? <div className="fig"><div className="v sm">{rules.held.length ? rules.held.map((t) => <span key={t}>{teamChip(t, true)}</span>) : "none"}{rules.freeWinOut != null && rules.winOut > 0 && <span className="mut"> costs {Math.max(0, Math.round(100 * (1 - rules.winOut / rules.freeWinOut)))}% of win-out</span>}</div><div className="k">{rules.active ? `held for Christmas until Thanksgiving is played${rules.pair ? ", both sides of one game" : ""}; what the holdback costs against the unconstrained plan` : rules.pool.length ? "Thanksgiving is played: nothing held, the rule has lifted" : "no Christmas teams left to hold"}</div></div>
         : box.cheapLeg && <div className="fig"><div className="v sm">{box.cheap.length ? box.cheap : "none"}</div><div className="k">{box.cheapCap(legLabel(box.cheapLeg))}</div></div>}
       </div>
