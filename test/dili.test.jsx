@@ -210,6 +210,13 @@ ok("future value on a readable scale", fvFor("W2", "KC", data) < 18 && fvFor("W2
   rows.forEach((q) => { const k = K(q.leg.id), c = cost(k, q.team); for (const t of Object.keys(OPP[q.leg.id])) if (!used.has(t) && !spent.has(t) && cost(k, t) < c - 1e-9) bad.push(`${q.leg.id} ${q.team}→${t}`); });
   for (let a = 0; a < rows.length; a++) for (let b = a + 1; b < rows.length; b++) { const ka = K(rows[a].leg.id), kb = K(rows[b].leg.id); if (cost(ka, rows[b].team) + cost(kb, rows[a].team) < cost(ka, rows[a].team) + cost(kb, rows[b].team) - 1e-9) bad.push(`swap ${rows[a].leg.id}/${rows[b].leg.id}`); }
   ok("with entries, no legal swap improves the Rule map's other weeks", bad.length === 0, bad.join(", "));
+  // an entered Thursday pick whose game is over stays the pick and is not planned again
+  const thu = Object.keys(OPP[now]).find((t) => !OPP[now][t].home && !spent.has(t)), opp = OPP[now][thu].opp, sp2 = JSON.parse(JSON.stringify(splash));
+  sp2.weeks[now] = { thursday: { asOf: "2026-10-16T00:30:00Z", alive: 2500, picks: { [thu]: 100, [opp]: 100 }, final: { [thu]: "W", [opp]: "L" } } };
+  const d2 = buildData({ picks, actuals, odds, ratings, splash: sp2 }), p2 = fitParams(d2), mine2 = { ...e.picks, [now]: thu };
+  const ms = simPlan(d2, mine2, p2), mr = rulesPlan(d2, mine2, p2);
+  ok("an entered Thursday team whose game is over stays the pick on both maps", team(ms, now) === thu && team(mr, now) === thu && ms.plan[0].fixed && mr.plan[0].fixed, `${thu} won Thursday`);
+  ok("and is not planned again later", [ms, mr].every((m) => m.plan.filter((q) => q.team === thu).length === 1));
   // a Christmas team entered before Thanksgiving is not held
   const xmTeam = rp.held[0], early = { ...e.picks, W8: xmTeam };
   const re = rulesPlan(real, early, params);

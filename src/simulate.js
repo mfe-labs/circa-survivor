@@ -90,15 +90,17 @@ export function simulate({ z, ff = null, legs, nTeams, burned, sdLead, opp, bloc
 // Score candidates for the current leg (legs[0]): win = closing win chance now, rest = expected survival of every
 // later leg with the team spent, forfeit = rest with nothing extra spent ÷ rest with the team spent (≥ 1 means the
 // team is worth something later). Every candidate is scored on the same playout paths.
-export function scoreCandidates({ z, ff = null, legs, nTeams, burned, sdLead, opp, candidates, n = SIM_PLAYOUTS, seed = SIM_SEED, blocked = null, trust = SIM_TRUST, fixed = null }) {
+export function scoreCandidates({ z, ff = null, legs, nTeams, burned, sdLead, opp, candidates, n = SIM_PLAYOUTS, seed = SIM_SEED, blocked = null, trust = SIM_TRUST, fixed = null, decidedPick = -1, decidedWin = 1 }) {
   const [now, ...later] = legs;
   const base = simulate({ z, legs: later, nTeams, burned, sdLead, opp, blocked, n, seed, trust, fixed });
   const teams = {};
   for (const i of candidates) {
-    if (Number.isNaN(z[now][i]) || burned[i]) continue;
+    // a team whose game this week is already decided (a Thursday final) is scored only when the entry has picked it
+    const decided = Number.isNaN(z[now][i]);
+    if ((decided && i !== decidedPick) || burned[i]) continue;
     const b = burned.slice(); b[i] = 1;
     const rest = simulate({ z, legs: later, nTeams, burned: b, sdLead, opp, blocked, n, seed, trust, fixed });
-    teams[i] = { win: normCdf(z[now][i]), rest: rest.value, forfeit: base.value / Math.max(rest.value, 1e-12), usage: rest.usage };
+    teams[i] = { win: decided ? decidedWin : normCdf(z[now][i]), rest: rest.value, forfeit: base.value / Math.max(rest.value, 1e-12), usage: rest.usage };
   }
   return { base: base.value, teams, n };
 }

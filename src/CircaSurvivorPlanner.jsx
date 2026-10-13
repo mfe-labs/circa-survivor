@@ -643,20 +643,22 @@ function simInputs(data, picks, params, n) {
   if (!legIdx.length) return null;
   const now = legIdx[0], fixedAll = fixedPicks(picks, tab, spent), fixed = { ...fixedAll }; delete fixed[now];   // this week stays open for scoring
   const burned = ALL_TEAMS.map((t, i) => (spent.has(t) || Object.values(fixed).includes(i) ? 1 : 0));
-  const candidates = ALL_TEAMS.map((t, i) => i).filter((i) => !burned[i] && !Number.isNaN(tab.z[now][i]));
+  const mineNow = fixedAll[now] ?? -1, decidedPick = mineNow >= 0 && Number.isNaN(tab.z[now][mineNow]) ? mineNow : -1;
+  const finals = decidedGames(LEGS[now].id, data.actuals[LEGS[now].id], splashAnchor(LEGS[now].id, data)), decidedWin = decidedPick >= 0 ? (finals[ALL_TEAMS[decidedPick]] === "L" ? 0 : 1) : 1;
+  const candidates = ALL_TEAMS.map((t, i) => i).filter((i) => !burned[i] && (!Number.isNaN(tab.z[now][i]) || i === decidedPick));
   const sdByLead = Array.from({ length: 24 }, (_, L) => (L === 0 ? 0 : SIM_SD(L)));
-  return { key: simKey(data, spent, params, n, fixedAll), spent, tab, legIdx, fixed, fixedAll, msg: { fixed, z: legIdx.map((k) => tab.z[k]), zKeys: legIdx, ff: tab.ff[now], legs: legIdx, nTeams: ALL_TEAMS.length, burned, sdByLead, opp: legIdx.map((k) => SIM_OPP[k]), candidates, n, seed: SIM_SEED } };
+  return { key: simKey(data, spent, params, n, fixedAll), spent, tab, legIdx, fixed, fixedAll, msg: { fixed, decidedPick, decidedWin, z: legIdx.map((k) => tab.z[k]), zKeys: legIdx, ff: tab.ff[now], legs: legIdx, nTeams: ALL_TEAMS.length, burned, sdByLead, opp: legIdx.map((k) => SIM_OPP[k]), candidates, n, seed: SIM_SEED } };
 }
 // the worker gets rows keyed by leg index; rebuild that shape for the engine
-const simArgs = (m) => { const z = {}, ff = {}, opp = {}; m.zKeys.forEach((k, j) => { z[k] = m.z[j]; opp[k] = m.opp[j]; }); ff[m.legs[0]] = m.ff; return { z, ff, legs: m.legs, nTeams: m.nTeams, burned: m.burned, sdLead: (L) => m.sdByLead[Math.min(L, m.sdByLead.length - 1)], opp, candidates: m.candidates, n: m.n, seed: m.seed, fixed: m.fixed }; };
+const simArgs = (m) => { const z = {}, ff = {}, opp = {}; m.zKeys.forEach((k, j) => { z[k] = m.z[j]; opp[k] = m.opp[j]; }); ff[m.legs[0]] = m.ff; return { z, ff, legs: m.legs, nTeams: m.nTeams, burned: m.burned, sdLead: (L) => m.sdByLead[Math.min(L, m.sdByLead.length - 1)], opp, candidates: m.candidates, n: m.n, seed: m.seed, fixed: m.fixed, decidedPick: m.decidedPick, decidedWin: m.decidedWin }; };
 function simFromScores(data, picks, params, inp, sc) {
   const { spent, tab, legIdx, msg } = inp, n = msg.n, now = legIdx[0];
   const empty = { plan: [], currentLeg: null, winOut: 0, weakest: [], rows: {}, base: 1, samples: n, xmas: [] };
   const cur = scoreCurrentWeek(data, params, tab, new Set(spent), new Set());
   const rows = {};
   for (const [i, r] of Object.entries(sc.teams)) {
-    const t = ALL_TEAMS[i], cr = cur?.rows[t]; if (cr && cr.ev == null) continue;   // decided games are not candidates
-    const ev = cr?.ev ?? r.win, forfeit = Math.max(1, r.forfeit);
+    const t = ALL_TEAMS[i], cr = cur?.rows[t], isMine = +i === inp.fixedAll[now]; if (cr && cr.ev == null && !isMine) continue;   // decided games are not candidates, unless it is the entry's pick
+    const ev = cr?.ev ?? cr?.win ?? r.win, forfeit = Math.max(1, r.forfeit);
     rows[t] = { win: cr?.win ?? r.win, ev, forfeit, rest: r.rest, dili: ev / forfeit, usage: r.usage, oldForfeit: cr?.forfeit ?? null };
   }
   const order = Object.keys(rows).sort((a, b) => rows[b].dili - rows[a].dili), mineNow = inp.fixedAll[now] != null ? ALL_TEAMS[inp.fixedAll[now]] : null;
