@@ -2138,6 +2138,9 @@ function Chart({ pts, money, num, start }) {
     const mx = top || Math.max(...pts.map((p) => p[k])) * 1.2 || 1;
     const y = (v) => H - py - ((H - 2 * py) * v) / mx;
     const d = pts.map((p, i) => (i ? "L" : "M") + xs[i].toFixed(1) + " " + y(p[k]).toFixed(1)).join(" ");
+    // every point is labeled; once the season gets long the labels shorten (2.9k, $1.2k) so neighbors do not collide
+    const dense = pts.length > 8, short = (v) => (Math.abs(v) >= 10000 ? (v / 1000).toFixed(0) + "k" : Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + "k" : Math.round(v).toString());
+    const label = (v) => (!dense ? fmt(v) : fmt === money ? "$" + short(v) : short(v));
     return (
       <div className="chart" style={{ minWidth: 280 }}>
         <h3>{title}</h3>
@@ -2147,7 +2150,7 @@ function Chart({ pts, money, num, start }) {
           {pts.map((p, i) => (
             <g key={i}>
               <circle cx={xs[i]} cy={y(p[k])} r="3" fill={color} />
-              {(i === 0 || i === pts.length - 1 || pts.length <= 4) && <text x={xs[i]} y={y(p[k]) - 8} textAnchor="middle" fill={color} fontWeight="600">{fmt(p[k])}</text>}
+              <text x={xs[i]} y={y(p[k]) - 8} textAnchor="middle" fill={color} fontWeight="600" fontSize={dense ? 8.5 : 10}>{label(p[k])}</text>
               <text x={xs[i]} y={H - 6} textAnchor="middle" fill="#9A9DA6">{p.x}</text>
             </g>
           ))}
