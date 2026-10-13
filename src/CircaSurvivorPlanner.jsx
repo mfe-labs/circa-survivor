@@ -864,6 +864,8 @@ const CSS = `
 .csp th.L { z-index:4; background:var(--paper); }
 .csp th.L.team { text-align:left; padding-left:12px; }
 .csp th.L.entry { cursor:default; }
+.csp th.L.entry .clrall { margin-right:10px; padding:1px 6px; font:inherit; font-size:10.5px; font-weight:500; color:var(--ink3); background:none; border:1px solid var(--rule2); border-radius:5px; cursor:pointer; vertical-align:1px; }
+.csp th.L.entry .clrall:hover { color:var(--ink); border-color:var(--ink3); }
 .csp td.L.num { color:var(--ink2); }
 .csp td.L.num.blank { color:var(--ink3); }
 .csp td.L.ev.num { color:var(--ink); font-weight:600; }
@@ -1089,7 +1091,8 @@ const CSS = `
   .csp .L.team, .csp .L.entry { left:218px; width:64px !important; min-width:64px !important; max-width:64px; overflow:hidden; text-overflow:ellipsis; }
   .csp .L.team { padding:0 4px 0 8px; }
   .csp .L.entry { padding:0 6px 0 0; font-size:10px; }
-  .csp .sum td.entry .tag { display:none; }   /* no room at phone width; the strikethrough says it */
+  .csp .sum td.entry .tag { display:none; }
+  .csp th.L.entry .clrall { display:none; }   /* the column is 64px here */   /* no room at phone width; the strikethrough says it */
   .csp th.L.team { padding-left:8px; }
   .csp .team .used, .csp .team .hd { display:none; }
   .csp .L.pctl { width:218px; min-width:218px; }
@@ -1435,7 +1438,7 @@ export default function CircaSurvivorPlanner() {
 
   const Header = ({ top }) => (
     <>
-      {top ? <th className="L entry">Entry</th> : <>
+      {top ? <th className="L entry">{canEdit && clearable > 0 && <button className="clrall" onClick={clearAll} title="Remove every pick Circa has not locked yet, on every live entry">Clear all</button>}Entry</th> : <>
         <th className={"L wp" + (sort.key === "wp" ? " sorted" : "")} onClick={() => clickSort("wp")} title={`True Win % — median of each book's no-vig moneyline probability · ${stamp}`}>W%</th>
         <th className={"L pp" + (sort.key === "pp" ? " sorted" : "")} onClick={() => clickSort("pp")} title="Circa pick popularity: actual once posted; before that the field model, the tooltip shows the middle half of where it could land at Saturday's lock, given line movement and how far the model has missed so far">P%</th>
         <th className={"L fv" + (sort.key === "fv" ? " sorted" : "")} onClick={() => clickSort("fv")} title="Future: about how many strong-favorite weeks this team has left that this entry would use. Half the team's own count and half the count against the teams you still hold, the same split as DILI's forfeit, leaning toward your own cover as the season shortens">Future</th>
@@ -1526,7 +1529,6 @@ export default function CircaSurvivorPlanner() {
                 {LEGS.map((l) => <option key={l.id} value={l.id}>{legLabel(l)}</option>)}
               </select>
               <button className={"ghost" + (audit ? " on" : "")} onClick={() => setAudit((a) => !a)} title="How W%, P%, EV, DILI and the ratings are calculated for this week">Model details {audit ? "▴" : "▾"}</button>
-              {canEdit && clearable > 0 && <button className="ghost" onClick={clearAll} title="Remove every pick Circa has not locked yet, on every live entry">Clear all</button>}
             </div>
             <div className="row">
               {canEdit && <button className="btn" onClick={updateLines} disabled={updating} title="Pull fresh moneylines from the sportsbooks now (otherwise twice a day)">{updating ? "Updating…" : "Update lines"}</button>}
