@@ -51,6 +51,9 @@ each with its own pick. Each team once per entry. Tie = loss. Schedule is hard-c
 ## P% (pick popularity), one number per leg
 - Leg has Circa actuals → use them.
 - Otherwise the **field model** `win^a · e^(−b·FV) · e^(−c·HP) · availability`, normalized over favored teams.
+- Shares are capped at availability (`capShares`): no team takes more of the field than the share of live entries
+  still holding it; the excess is spread over the rest in proportion. Applied in modelPick, modelPickRange and
+  projectField. Inactive through Week 5 (no favorite near its cap); matters once popular teams are spent.
   `HP` (holiday pressure) is the scarcity of each upcoming holiday pool (1/teams still available to the field)
   weighted by how near that week is (0.8 per week), and zero once it passes. `a`, `b`, `c` are fit by coordinate
   descent against every leg with actuals, with a prior penalty of `PRIOR_WEIGHT / legs²` (full guardrail on one

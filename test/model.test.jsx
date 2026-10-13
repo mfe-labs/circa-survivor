@@ -1,6 +1,6 @@
 // Field timeline + popularity model on the real data files.
-import { buildData, fieldTimeline, modelPick, modelPickRange, fitParams, availability, fvAt, splashAnchor, computeEV } from "../src/CircaSurvivorPlanner.jsx";
-import { OPP } from "../src/schedule.js";
+import { buildData, fieldTimeline, modelPick, modelPickRange, fitParams, availability, fvAt, splashAnchor, computeEV, capShares, projectField } from "../src/CircaSurvivorPlanner.jsx";
+import { OPP, LEGS } from "../src/schedule.js";
 import picks from "../data/picks.json";
 import actuals from "../data/actuals.json";
 import odds from "../data/odds.json";
@@ -85,5 +85,16 @@ ok("no actuals → prior", (() => { const p = fitParams({ ...data, actuals: {} }
   });
   const avg = miss.reduce((s, m) => s + m.d, 0) / miss.length;
   ok("top team within 12 pts every week and 5 on average", miss.length > 0 && miss.every((m) => m.d < 0.12) && avg < 0.05, miss.map((m) => `${m.id} ${m.t} ${(100 * m.d).toFixed(1)}`).join(", ") + ` · avg ${(100 * avg).toFixed(1)}`);
+})();
+// no team takes more of the field than the share of entries still holding it
+(() => {
+  const p = capShares({ A: 0.6, B: 0.3, C: 0.1 }, { A: 0.2, B: 1, C: 1 });
+  ok("cap clips a team at its availability and spreads the rest", Math.abs(p.A - 0.2) < 1e-9 && Math.abs(p.A + p.B + p.C - 1) < 1e-9 && Math.abs(p.B / p.C - 3) < 1e-9, JSON.stringify(p));
+  const pr = fitParams(data), first = LEGS.find((l) => !data.actuals[l.id]);
+  const pf = first ? projectField(first.id, data, pr) : {};
+  const over = []; for (const [id, v] of Object.entries(pf)) for (const [tm, x] of Object.entries(v.p)) if (x > (v.av[tm] ?? 1) + 1e-6) over.push(`${id} ${tm}`);
+  ok("projected weeks never give a team more than its availability", Object.keys(pf).length > 0 && over.length === 0, over.join(", ") || `${Object.keys(pf).length} weeks checked`);
+  const mp = first ? modelPick(first.id, data, pr, true) : {}, av1 = first ? availability(first.id, data) : {};
+  ok("this week's estimate stays under availability too", Object.entries(mp).every(([tm, x]) => x <= (av1[tm] ?? 1) + 1e-6));
 })();
 if (fails) { console.log(`${fails} FAILED`); process.exit(1); }

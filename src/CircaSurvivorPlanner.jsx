@@ -308,6 +308,7 @@ function projectField(legId, data, params) {
         const sc = {}; let tot = 0;
         for (const t of Object.keys(OPP[l.id])) { const w = lineFor(l.id, t, data)?.win; if (w == null || w < 0.5) continue; const v = Math.pow(w, params.a) * Math.exp(-params.b * fvFor(l.id, t, data)) * av[t]; sc[t] = v; tot += v; }
         p = {}; for (const t in sc) p[t] = tot > 0 ? sc[t] / tot : 0;
+        capShares(p, av);
         if (k === 0) { const an = splashAnchor(l.id, data); if (an) p = applyAnchor(blendAnchor(an, p, params), p); }
       }
       out[l.id] = { p, av: { ...av } };
@@ -629,6 +630,19 @@ const applyAnchor = (blend, p, rng = null) => {
   for (const t of Object.keys(out)) if (!(t in blend.blended)) out[t] *= scale;
   return out;
 };
+// No team can take more of the field than the share of live entries still holding it. The popularity score is
+// multiplied by availability, but normalizing can still push a big favorite past it once much of the field has
+// used that team (it projected Week 12 Jacksonville at 58% with 21% still holding them). Clip at availability and
+// spread the excess over the rest in proportion, repeating until nothing is over.
+function capShares(p, av) {
+  for (let it = 0; it < 30; it++) {
+    let ex = 0, free = 0;
+    for (const t in p) { const cap = av[t] ?? 1; if (p[t] > cap) { ex += p[t] - cap; p[t] = cap; } else if (p[t] < cap) free += p[t]; }
+    if (ex < 1e-9 || free <= 0) break;
+    for (const t in p) if (p[t] < (av[t] ?? 1)) p[t] += (ex * p[t]) / free;
+  }
+  return p;
+}
 function modelPick(legId, data, params, raw = false) {
   const { a, b, c = 0 } = params;
   const av = availability(legId, data);
@@ -641,6 +655,7 @@ function modelPick(legId, data, params, raw = false) {
   }
   const out = {};
   for (const t of Object.keys(sc)) out[t] = tot > 0 ? sc[t] / tot : 0;
+  capShares(out, av);
   if (raw) return out;
   const an = splashAnchor(legId, data);
   return an ? applyAnchor(blendAnchor(an, out, params), out) : out;
@@ -695,6 +710,7 @@ function modelPickRange(legId, data, params, now = Date.now()) {
       const rows = {}; let tot = 0;
       for (const x of teams) { const win = normCdf(x.z + sd * gauss(r)); const v = win >= 0.5 ? Math.pow(win, a) * x.k * Math.exp((x.t === top ? errTop : errOther) * gauss(r)) : 0; rows[x.t] = { win, pick: v }; tot += v; }
       for (const t of Object.keys(OPP[legId])) { if (!rows[t]) rows[t] = { win: null, pick: 0 }; else rows[t].pick = tot > 0 ? rows[t].pick / tot : 0; }
+      { const cp = capShares(Object.fromEntries(teams.map((x) => [x.t, rows[x.t].pick])), av); for (const t in cp) rows[t].pick = cp[t]; }
       if (anchor) { const shares0 = Object.fromEntries(Object.keys(OPP[legId]).map((t) => [t, rows[t].pick])); const p = applyAnchor(blendAnchor(anchor, shares0, params), shares0, r); for (const t of Object.keys(p)) rows[t].pick = p[t]; for (const [t, f] of Object.entries(anchor.final)) if (rows[t]) rows[t].win = f === "W" ? 1 : 0; }
       computeEV(legId, rows);
       for (const x of teams) { acc[x.t].p.push(rows[x.t].pick); if (rows[x.t].ev != null) acc[x.t].ev.push(rows[x.t].ev); }
@@ -768,7 +784,7 @@ export function entryStatus(entry, actualLegs) {
   return { alive: true, leg: null };
 }
 
-export { lineFor, modelPickRange, fvAt, bandError, strengthWeight, futureFor, marketLine, splashAnchor, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
+export { capShares, projectField, lineFor, modelPickRange, fvAt, bandError, strengthWeight, futureFor, marketLine, splashAnchor, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
 
 const CSS = `
 /* ---- tokens: paper, ink, one green ---- */
