@@ -1539,8 +1539,9 @@ export default function CircaSurvivorPlanner() {
   const diliTip = (st, t) => {
     if (st.deadLeg) return `Burning this team leaves nothing eligible for ${legLabel(st.deadLeg)}: DILI 0`;
     const swaps = (st.swaps || []).map((p) => `${legLabel(p.leg)} ${p.from} ${pct(p.fromWin)} → ${p.to} ${pct(p.toWin)}`).join(", ");
-    const parts = (st.forfeitMap != null && st.strengthW > 0 ? ` (map ${st.forfeitMap.toFixed(2)}, strength ${st.forfeitStr.toFixed(2)} at ${Math.round(100 * st.strengthW)}%)` : "") + (simRows[t]?.forfeit != null ? ` · playout forfeit ${simRows[t].forfeit.toFixed(2)} would give DILI ${simRows[t].dili.toFixed(2)}` : "");
-    return `EV ${st.ev.toFixed(2)} ÷ forfeit ${st.forfeit.toFixed(2)}${parts} = ${st.dili.toFixed(2)}${st.diliLo != null ? ` (likely ${st.diliLo.toFixed(2)}–${st.diliHi.toFixed(2)} at lock (middle half of outcomes))` : ""} · ${swaps ? `burning it changes your map: ${swaps}` : "not on your projected map, so the forfeit is only the chance it turns into a spot later"}${st.dDili != null ? dTip("was", (st.dili - st.dDili).toFixed(2)) : ""}`;
+    const parts = st.forfeitMap != null && st.strengthW > 0 ? ` (map ${st.forfeitMap.toFixed(2)}, strength ${st.forfeitStr.toFixed(2)} at ${Math.round(100 * st.strengthW)}%)` : "";
+    const simNote = simRows[t]?.forfeit != null ? ` · the playouts put the forfeit at ${simRows[t].forfeit.toFixed(2)}, which would make DILI ${simRows[t].dili.toFixed(2)}` : "";
+    return `EV ${st.ev.toFixed(2)} ÷ forfeit ${st.forfeit.toFixed(2)}${parts} = ${st.dili.toFixed(2)}${simNote}${st.diliLo != null ? ` (likely ${st.diliLo.toFixed(2)}–${st.diliHi.toFixed(2)} at lock (middle half of outcomes))` : ""} · ${swaps ? `burning it changes your map: ${swaps}` : "not on your projected map, so the forfeit is only the chance it turns into a spot later"}${st.dDili != null ? dTip("was", (st.dili - st.dDili).toFixed(2)) : ""}`;
   };
   const dTip = (label, was) => (prevAt ? ` · ${label} ${was} at the previous refresh (${fmtTime(prevAt)})` : "");
   void 0;
