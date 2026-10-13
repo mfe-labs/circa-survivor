@@ -61,6 +61,28 @@
     "W13": "DEN",
     "W15": "GB"
    }
+  },
+  {
+   "id": "mv7a7euf",
+   "name": "10-13 Map",
+   "entry": "CIRCAmcised-2",
+   "picks": {
+    "W6": "LAR",
+    "W7": "NYJ",
+    "W8": "CIN",
+    "W9": "SEA",
+    "W10": "IND",
+    "W11": "BUF",
+    "TG": "DAL",
+    "W12": "JAX",
+    "W13": "DEN",
+    "W14": "BAL",
+    "W15": "GB",
+    "XM": "CHI",
+    "W16": "LV",
+    "W17": "PIT",
+    "W18": "NE"
+   }
   }
  ]
 }
