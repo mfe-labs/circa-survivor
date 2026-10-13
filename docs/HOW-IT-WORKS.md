@@ -38,8 +38,10 @@ each with its own pick. Each team once per entry. Tie = loss. Schedule is hard-c
   tooltip; below 75% coverage EV is blanked.
 - **Power ratings** (`ratings.json`): fit by the same Action from market spreads. Every 2026 game with a closing
   line (nflverse) plus the current DraftKings spreads is an equation `home − away + 2 = spread`; a ridge fit solves
-  for one number per team, shrunk toward last season's ratings early in the year. Ratings project spreads for every
-  future cell (italic) and drive the Future column.
+  for one number per team, shrunk toward the Super Bowl futures prior (λ = 2). Recent games count more: a line's
+  weight halves every 3 weeks back (backtested on 2025–26 closing spreads; equal weights were worst in every test).
+  Ratings project spreads for every future cell (italic) and drive the Future column; spread → win chance is
+  Φ(spread ÷ 11.5), calibrated to closing moneylines (`MARGIN_SD`).
 - **Picks** (`picks.json`) are written by the app when the owner is signed in. After a week locks they are also
   confirmed against Circa's file (below), which is the source of truth.
 - **Circa actuals** (`actuals.json`): a GitHub Action runs every 3 hours from Thursday to Monday. Circa posts a text
@@ -106,7 +108,7 @@ fetch fails, last season's market ratings regressed 40% toward average are the f
   the map costs ~nothing; a team on it costs the swap it forces. If burning it leaves a leg with no eligible team
   (a holiday), the forfeit is ∞ and DILI 0. No separate holiday term any more.
 - **Uncertainty**: the map is solved `MAP_SAMPLES` = 96 times with every future win chance jiggled in z-space by
-  `noiseSd(lead)` = (3 + 0.25 × legs ahead) ÷ 13.5 (1.5 ÷ 13.5 when the game already has a market line), seeded
+  `noiseSd(lead)` = (3 + 0.25 × legs ahead) ÷ 11.5 (1.5 ÷ 11.5 when the game already has a market line), seeded
   so it is deterministic and the same draws are used for every candidate; the forfeit is the average. The noise
   levels come from seven seasons of nflverse closing lines vs ratings fit through Week 4 (residual SD ≈ 3 pts a
   month out, ≈ 6 pts twelve weeks out). This prices flexibility: a team that is the best option in a distant week

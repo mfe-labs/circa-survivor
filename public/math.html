@@ -94,7 +94,7 @@ W% (away)     = 1 − W% (home)</code>
 solve all of them at once by least squares,
 with ridge shrinkage λ=2 pulling each rating toward a prior</code>
 <p>The prior is the Super Bowl futures market. Each book's title odds are de-vigged into probabilities, averaged across books, converted to log-odds, then standardised and scaled to ±3.5 points. It is the market's own view of who is good this season, so early-season ratings do not lean on last year's results. It refreshes every three days.</p>
-<p>Shrinkage matters early and fades: with 48 games of lines the fit is still partly the prior, and by midseason the games dominate. A projected margin becomes a win chance through a normal curve with a standard deviation of 13.5 points, the usual figure for NFL scoring.</p>
+<p>Shrinkage matters early and fades: with 48 games of lines the fit is still partly the prior, and by midseason the games dominate. Recent games count more in the fit: a line's weight halves every three weeks back, so the ratings follow the market when a team changes instead of averaging the whole season. A projected margin becomes a win chance through a normal curve with a standard deviation of 11.5 points, the figure that matches closing moneylines across 2024–26 (13.5, the usual figure for NFL scoring, understated big favorites by three or four points).</p>
 <p class="src">Current top: Rams 5.6, Bills 4.7, Ravens 4.1. Bottom: Titans −5.3, Browns −6.4, Dolphins −7.4.</p>
 
 <h2 id="f"><span class="n">3</span>Future value</h2>

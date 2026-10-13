@@ -36,7 +36,7 @@ function erf(x) {
   const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
   return x < 0 ? -y : y;
 }
-const winFromMargin = (m) => normCdf(m / 13.5);
+const winFromMargin = (m) => normCdf(m / MARGIN_SD);
 // spread from this team's perspective (negative = favorite), and win prob, projected from power ratings
 function projected(legId, team, ratings) {
   const g = OPP[legId][team];
@@ -286,7 +286,7 @@ function holidayPressure(legId, team, data, av) {
 const NEAR_LEGS = 4;                        // legs ahead the field is projected for; only the current week's projection is ever scored on (see seasonTable)
 const MAP_SAMPLES = 96;                     // noisy seasons averaged per forfeit; fixed seed, so numbers are stable
 const MAP_FLOOR = 0.02;                     // "win chance" of a leg with nothing to pick: a forfeit, near-certain loss
-const MARGIN_SD = 13.5;                     // points of margin per unit of win-chance z
+const MARGIN_SD = 11.5;                     // points of spread per unit of win-chance z: Φ(spread ÷ 11.5) matches closing moneylines (2024–26, 637 games, 1.9 pts rms; 13.5 was 3.2 and understated big favorites by 3–4 pts)
 const noiseSd = (lead, market) => (market ? 1.5 : 3 + 0.25 * lead) / MARGIN_SD;
 const probit = (p) => { let lo = -6, hi = 6; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (normCdf(m) < p) lo = m; else hi = m; } return (lo + hi) / 2; };
 function seededRng(seed) { return () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }

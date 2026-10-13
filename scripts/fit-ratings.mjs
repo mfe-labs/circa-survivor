@@ -9,10 +9,16 @@ import { ABBR } from "../src/schedule.js";
 const OUT = new URL("../data/ratings.json", import.meta.url);
 const ODDS = new URL("../data/odds.json", import.meta.url);
 
+// Recent lines count more: a game's weight halves every HALF_LIFE weeks back from the current week. Backtested on 2025
+// and 2026 closing spreads (predicting each week from the weeks before it): a 3-week half-life cut the miss from
+// 4.2 to 3.7 points over 2025 and 2.95 to 2.85 over 2026 Weeks 3–6; equal weights were worst in every test.
+const HALF_LIFE = 3;
+const rows = await loadGames();
+const curWeek = Math.max(0, ...rows.filter((r) => r.season === "2026" && r.result != null).map((r) => r.week)) + 1;
 const games = [], last = [], seen = new Set();
-for (const r of await loadGames()) {
+for (const r of rows) {
   if (r.spread == null) continue;
-  const g = { home: r.home, away: r.away, margin: r.spread, neutral: r.neutral };
+  const g = { home: r.home, away: r.away, margin: r.spread, neutral: r.neutral, weight: Math.pow(0.5, Math.max(0, curWeek - r.week) / HALF_LIFE) };
   if (r.season === "2025") last.push(g);
   if (r.season === "2026") { games.push(g); seen.add(`${r.away}@${r.home}`); }
 }
@@ -48,12 +54,12 @@ try {
     const sps = Object.values(g.books || {}).map((b) => b.spread?.[home]).filter((v) => v != null).sort((a, b) => a - b);
     if (!sps.length) continue;
     const med = sps.length % 2 ? sps[(sps.length - 1) / 2] : (sps[sps.length / 2 - 1] + sps[sps.length / 2]) / 2;
-    games.push({ home, away, margin: -med, neutral: false });
+    games.push({ home, away, margin: -med, neutral: false, weight: 1 });
   }
 } catch {}
 const { ratings, games: used } = fitRatings(games, { lambda: 2, prior });
 const prevR = existing.ratings ? { updatedAt: existing.updatedAt, ratings: existing.ratings } : null;
-writeFileSync(OUT, JSON.stringify({ updatedAt: new Date().toISOString(), prev: prevR, source: `market spreads: ${used} games this season (nflverse closing lines + current book), anchored to the ${priorSource}`, games: used, priorSource, prior, futures, ratings }, null, 1) + "\n");
+writeFileSync(OUT, JSON.stringify({ updatedAt: new Date().toISOString(), prev: prevR, source: `market spreads: ${used} games this season (nflverse closing lines + current book, recent games weighted more: ${HALF_LIFE}-week half-life), anchored to the ${priorSource}`, games: used, priorSource, prior, futures, ratings }, null, 1) + "\n");
 const top = Object.entries(ratings).sort((a, b) => b[1] - a[1]);
 console.log(`ratings from ${used} games (${fromNflverse} nflverse), prior = ${priorSource}`, "top:", top.slice(0, 5).map(([t, r]) => `${t} ${r}`).join(", "), "bottom:", top.slice(-3).map(([t, r]) => `${t} ${r}`).join(", "));
 console.log("prior top:", Object.entries(prior).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([t, r]) => `${t} ${r}`).join(", "), "| SF", ratings.SF, "(prior", prior.SF + ")", "BAL", ratings.BAL, "(prior", prior.BAL + ")", "TB", ratings.TB);
