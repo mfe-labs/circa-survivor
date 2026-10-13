@@ -916,6 +916,9 @@ const CSS = `
 .csp .sum tr:has(+ tr.sel) td, .csp .sum tr:has(+ tr.sel) th { border-bottom-color:transparent; }
 .csp .sum td.s { width:var(--cw); min-width:var(--cw); }
 .csp .sum td.s .chip { display:inline-block; min-width:38px; padding:2px 5px; border-radius:5px; font-size:11px; font-weight:600; line-height:16px; }
+.csp .sum td.s .chip.clr { position:relative; cursor:pointer; }
+.csp .sum td.s .chip.clr::after { content:"×"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; border-radius:inherit; font-size:16px; font-weight:600; color:var(--ink); background:rgba(255,255,255,.68); opacity:0; }
+.csp .sum td.s .chip.clr:hover::after { opacity:1; }
 .csp .sum td.empty { color:var(--rule2); font-weight:400; }
 .csp .sum tr.gap td { height:var(--gap); background:var(--paper); cursor:default; position:sticky; top:calc(var(--th) + var(--n) * var(--rh)); z-index:4; border-bottom:1px solid var(--rule); }
 .csp .sum tr.gap td:first-child { left:0; z-index:6; }
@@ -1213,6 +1216,14 @@ export default function CircaSurvivorPlanner() {
     setJson("picks", (p) => ({ ...p, entries: p.entries.map((e, i) => { if (i !== active) return e; const picks = { ...e.picks }; if (picks[lg] === team) delete picks[lg]; else picks[lg] = team; return { ...e, picks }; }) }));
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => save("picks", `Picks: ${entries[active]?.name} ${lg} ${team}`), 800);
+  };
+  // clear one entry's pick from the entry table; only weeks Circa has not published picks for
+  const clearPick = (idx, lg) => {
+    if (!canEdit || data.actuals[lg] || standing[idx]?.alive === false) return;
+    const name = entries[idx]?.name, team = entries[idx]?.picks[lg];
+    setJson("picks", (p) => ({ ...p, entries: p.entries.map((e, i) => { if (i !== idx) return e; const picks = { ...e.picks }; delete picks[lg]; return { ...e, picks }; }) }));
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => save("picks", `Picks: ${name} clear ${lg} ${team}`), 800);
   };
   // saved maps (Map tab): same auto-save as picks, on its own timer
   const mapTimer = useRef(null);
@@ -1525,9 +1536,9 @@ export default function CircaSurvivorPlanner() {
                   <span className="nm">{e.name}</span>{standing[i]?.alive === false && <span className="tag">out {standing[i].leg.label}</span>}
                 </td>
                 {LEGS.map((l) => {
-                  const t = e.picks[l.id];
+                  const t = e.picks[l.id], clr = t && canEdit && !data.actuals[l.id] && standing[i]?.alive !== false;
                   return (
-                    <td key={l.id} className={"s" + (t ? "" : " empty") + (l.id === legId ? " curcol" : "")}>{t ? <span className="chip" style={{ background: COLORS[t][0], color: COLORS[t][1] }}>{t}</span> : "·"}</td>
+                    <td key={l.id} className={"s" + (t ? "" : " empty") + (l.id === legId ? " curcol" : "")}>{t ? <span className={"chip" + (clr ? " clr" : "")} style={{ background: COLORS[t][0], color: COLORS[t][1] }} onClick={clr ? (ev) => { ev.stopPropagation(); clearPick(i, l.id); } : undefined} title={clr ? `Clear ${t} from ${legLabel(l)}` : undefined}>{t}</span> : "·"}</td>
                   );
                 })}
               </tr>
