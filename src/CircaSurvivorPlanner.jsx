@@ -462,7 +462,7 @@ function decidedGames(legId, act, anchor) {
   else if (anchor) for (const [t, f] of Object.entries(anchor.final)) mark(t, f);
   return out;
 }
-export function computeDili(legId, rows, data, burned, params = PRIOR, skip = null) {
+export function computeDili(legId, rows, data, burned, params = PRIOR, skip = null, forfeits = null) {
   const tab = seasonTable(data, params);
   const legIdx = mapLegs(tab, legId, skip);
   const bi = ALL_TEAMS.map((t) => burned.has(t));
@@ -489,50 +489,17 @@ export function computeDili(legId, rows, data, burned, params = PRIOR, skip = nu
     const r = rows[t];
     r.forfeitStr = Math.exp(beta * fv[t]); r.strengthW = w; r.beta = beta;
     r.forfeit = Math.pow(r.forfeitMap, 1 - w) * Math.pow(r.forfeitStr, w);
+    // the playouts' forfeit (simulate.js) is the one DILI uses once it is in; the blend above stays as the old method,
+    // shown beside it, until the comparison phase is over
+    if (forfeits?.[t] != null) { r.forfeitOld = r.forfeit; r.forfeit = forfeits[t]; }
     r.dili = r.ev / r.forfeit;
   }
   return base.path;
 }
-// The whole-season plan for one entry, for the Map tab. Every open leg without a pick is filled by the map;
-// for each: how often that team filled it across the noisy seasons, the backup (what fills the leg if the
-// team is burned) and what burning it costs, and field ownership for the near legs. Also which of this
-// week's favorites the map needs least in later weeks (cheapest to burn).
-export function planMap(data, picks, params = PRIOR) {
-  const tab = seasonTable(data, params);
-  const legIdx = mapLegs(tab, null);
-  const spent = spentTeams(data, picks), bi = ALL_TEAMS.map((t) => spent.has(t));
-  const base = bestMap(tab, legIdx, bi, -1);
-  const byLeg = legIdx.map(() => ({})), onMap = {};
-  // onMap counts use in any week after the first one mapped, which is the week "cheapest to burn" is about
-  for (let s = 0; s < MAP_SAMPLES; s++) bestMap(tab, legIdx, bi, s).path.forEach((p, j) => { if (!p.team) return; byLeg[j][p.team] = (byLeg[j][p.team] || 0) + 1; if (j > 0) onMap[p.team] = (onMap[p.team] || 0) + 1; });
-  const plan = base.path.map((p, j) => {
-    const l = p.leg, near = tab.near[l.id];
-    const out = { ...p, held: p.team ? byLeg[j][p.team] || 0 : 0, samples: MAP_SAMPLES, others: Object.entries(byLeg[j]).filter(([t]) => t !== p.team).sort((a, b) => b[1] - a[1]).slice(0, 2) };
-    if (l.holiday) { const pool = [...(l.id === "TG" ? TG_TEAMS : XM_TEAMS)]; out.pool = pool.length; out.poolLeft = pool.filter((t) => !bi[ALL_TEAMS.indexOf(t)]).length; }
-    if (!p.team) return out;
-    const alt = bestMap(tab, legIdx, withBurned(bi, p.team), -1);
-    out.backup = alt.path[j].team; out.backupWin = alt.path[j].win; out.cost = Math.exp(base.V - alt.V);
-    if (near) { out.fieldHold = near.av[p.team]; out.fieldPick = near.p[p.team] || 0; }
-    return out;
-  });
-  const now = legIdx.length ? LEGS[legIdx[0]] : null;
-  const free = !now ? [] : Object.keys(OPP[now.id]).filter((t) => !bi[ALL_TEAMS.indexOf(t)] && !Number.isNaN(tab.z[legIdx[0]][ALL_TEAMS.indexOf(t)]) && (lineFor(now.id, t, data)?.win ?? 0) >= 0.55 )
-    .map((t) => ({ team: t, win: lineFor(now.id, t, data).win, onMap: (onMap[t] || 0) / MAP_SAMPLES })).sort((a, b) => a.onMap - b.onMap || b.win - a.win).slice(0, 3);
-  const live = plan.filter((p) => p.team);
-  return { plan, byLeg, nowLeg: now || null, currentLeg: LEGS[tab.nowIdx] || null, winOut: live.length === plan.length ? live.reduce((x, p) => x * p.win, 1) : 0, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), free, samples: MAP_SAMPLES };
-}
-// Claude's DILI Map: the Planner's pick this week (top DILI: EV ÷ forfeit, with the strength half), then the rest of
-// the season planned together as the plan with the best chance of winning every week given that pick. The current
-// week therefore always matches the Planner. Later weeks score on win chance alone, because the projected crowds
-// further out are too lopsided to trust (they ranked a 29% NYG third in Week 7).
-// Claude Locks: the weeks where the DILI Map and the 96 Map name the same team; every other week is left empty.
-export function locksPicks(dili, cons) {
-  const by96 = Object.fromEntries(cons.plan.map((p) => [p.leg.id, p.team]));
-  return Object.fromEntries(dili.plan.filter((p) => p.team && by96[p.leg.id] === p.team).map((p) => [p.leg.id, p.team]));
-}
+const forfeitsOf = (sim) => (sim ? Object.fromEntries(Object.entries(sim.rows).map(([t, r]) => [t, r.forfeit])) : null);
 // This week, scored exactly as the Planner scores it: rows with win, pick share, EV, forfeit and DILI, the candidates
 // in DILI order, and the cheapest favorites to burn. Null once the season is over.
-function scoreCurrentWeek(data, params, tab, burned, skip) {
+function scoreCurrentWeek(data, params, tab, burned, skip, forfeits = null) {
   const k = tab.nowIdx; if (k >= LEGS.length) return null;
   const l = LEGS[k], now = true, rows = {};
   // the current week scores on True Win % like the Planner; if the books have posted nothing yet, fall back to projections
@@ -547,33 +514,29 @@ function scoreCurrentWeek(data, params, tab, burned, skip) {
   if (ev && computeEV(l.id, rows).blanked) ev = false;
   if (!ev) for (const t in rows) rows[t].ev = rows[t].win;
   for (const t of Object.keys(finals)) if (rows[t]) rows[t].ev = null;
-  computeDili(l.id, rows, data, burned, params, skip);
+  computeDili(l.id, rows, data, burned, params, skip, forfeits);
   const cands = Object.keys(OPP[l.id]).filter((t) => rows[t].dili != null).sort((a, b) => rows[b].dili - rows[a].dili);
   const cheap = Object.keys(OPP[l.id]).filter((t) => rows[t].forfeit != null && Number.isFinite(rows[t].forfeit) && (rows[t].win ?? 0) >= 0.55).map((t) => ({ team: t, win: rows[t].win, forfeit: rows[t].forfeit })).sort((a, b) => a.forfeit - b.forfeit || b.win - a.win).slice(0, 3);
   return { l, rows, cands, cheap };
 }
-export function diliPlan(data, picks, params = PRIOR) {
-  const tab = seasonTable(data, params);
-  const burned = spentTeams(data, picks), skip = new Set(), plan = [];
-  let cheap = [];
-  const cur = scoreCurrentWeek(data, params, tab, burned, skip);
-  if (cur) {
-    const { l, rows, cands } = cur, [t1, t2] = cands, r1 = t1 ? rows[t1] : null, r2 = t2 ? rows[t2] : null;
-    plan.push({ leg: l, team: t1 || null, win: r1?.win ?? null, dili: r1?.dili ?? null, forfeit: r1?.forfeit ?? null, backup: t2 || null, backupWin: r2?.win ?? null, backupDili: r2?.dili ?? null, ev: !!r1 && r1.ev != null, ...holidayPool(l, burned) });
-    cheap = cur.cheap;
-    if (t1) burned.add(t1);
-  }
-  // every later week together: the plan with the best chance of winning out, given this week's pick. Picking them
-  // one week at a time (the best-looking team each week) was tried and strands later weeks the way the old 96 Map did.
-  const rest = LEGS.map((l, i) => i).filter((i) => i > tab.nowIdx), bi = ALL_TEAMS.map((t) => burned.has(t));
-  const path = survivalPath(tab, rest, bi), used = new Set(path.map((q) => q.team).filter(Boolean)), before = new Set(burned);
-  for (const q of path) {
-    const alt = freeBest(tab, q.k, used, bi);
-    plan.push({ leg: q.leg, team: q.team, win: q.win, dili: null, forfeit: null, backup: alt?.team || null, backupWin: alt?.win ?? null, backupDili: null, ev: false, planned: true, ...holidayPool(q.leg, before) });
-    if (q.team) before.add(q.team);
-  }
-  const live = plan.filter((p) => p.team);
-  return { plan, currentLeg: LEGS[tab.nowIdx] || null, winOut: live.length === plan.length && plan.length ? live.reduce((x, p) => x * p.win, 1) : 0, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), cheap };
+// The plain survival plan for an entry (every open leg, one team each, best chance of winning out at today's lines),
+// with each week's backup and what burning the pick would cost the plan. Used by custom maps and tests.
+export function planMap(data, picks, params = PRIOR) {
+  const tab = seasonTable(data, params), legIdx = mapLegs(tab, null), spent = spentTeams(data, picks), bi = ALL_TEAMS.map((t) => spent.has(t));
+  const path = survivalPath(tab, legIdx, bi), used = new Set(path.map((q) => q.team).filter(Boolean)), before = new Set(spent);
+  const value = (pth) => pth.reduce((v, q) => v + (q.team ? Math.log(q.ew) : Math.log(MAP_FLOOR)), 0), V = value(path);
+  const plan = path.map((q) => {
+    const alt = freeBest(tab, q.k, used, bi), row = { leg: q.leg, team: q.team, win: q.win, held: q.team ? 1 : 0, samples: 1, backup: alt?.team || null, backupWin: alt?.win ?? null, cost: 1, ...holidayPool(q.leg, before) };
+    if (q.team) { row.cost = Math.max(1, Math.exp(V - value(survivalPath(tab, legIdx, withBurned(bi, q.team))))); before.add(q.team); }
+    return row;
+  });
+  const live = plan.filter((p) => p.team), now = legIdx.length ? LEGS[legIdx[0]] : null;
+  return { plan, nowLeg: now, currentLeg: now, winOut: live.length === plan.length && plan.length ? live.reduce((x, p) => x * p.win, 1) : 0, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), samples: 1 };
+}
+// Claude Locks: the weeks where two maps name the same team; every other week is left empty.
+export function locksPicks(a, b) {
+  const byB = Object.fromEntries(b.plan.map((p) => [p.leg.id, p.team]));
+  return Object.fromEntries(a.plan.filter((p) => p.team && byB[p.leg.id] === p.team).map((p) => [p.leg.id, p.team]));
 }
 // Claude Rules Map: the policy Jamie and Jeremy have committed to. Hold RULE_HOLD Christmas-eligible teams unused
 // until Thanksgiving has been played (Christmas is the most fragile slate: four games, close lines, a field nobody can
@@ -584,7 +547,7 @@ export function diliPlan(data, picks, params = PRIOR) {
 // a held team. The strip shows the held teams and the price of the rule against the unconstrained plan.
 const RULE_HOLD = 3, RULE_SLACK = Math.log(1.02);
 const combos = (xs, n) => (n === 0 ? [[]] : xs.flatMap((x, i) => combos(xs.slice(i + 1), n - 1).map((c) => [x, ...c])));
-export function rulesPlan(data, picks, params = PRIOR, hold = RULE_HOLD) {
+export function rulesPlan(data, picks, params = PRIOR, hold = RULE_HOLD, forfeits = null) {
   const tab = seasonTable(data, params), legIdx = mapLegs(tab, null), spent = spentTeams(data, picks), bi = ALL_TEAMS.map((t) => spent.has(t));
   const xm = LEGS.findIndex((l) => l.id === "XM"), tg = LEGS.findIndex((l) => l.id === "TG");
   const pool = [...XM_TEAMS].filter((t) => !spent.has(t)), n = Math.min(hold, pool.length);
@@ -602,7 +565,7 @@ export function rulesPlan(data, picks, params = PRIOR, hold = RULE_HOLD) {
   const blocked = held.length ? blockFor(held) : null;
   // this week: the Planner's top DILI that is not held
   const burned = new Set(spent), plan = [];
-  const cur = scoreCurrentWeek(data, params, tab, burned, new Set());
+  const cur = scoreCurrentWeek(data, params, tab, burned, new Set(), forfeits);
   let cheap = [];
   if (cur) {
     const { l, rows } = cur, cands = cur.cands.filter((t) => !held.includes(t)), [t1, t2] = cands, r1 = t1 ? rows[t1] : null, r2 = t2 ? rows[t2] : null;
@@ -674,37 +637,23 @@ export function simPlan(data, picks, params = PRIOR, n = SIM_PLAYOUTS) {
 }
 // the page's version: the engine runs in a worker, the hook returns null until the scores are back
 const simStore = new Map(); let simWorker = null, simSeq = 0;
+const SIM_CACHE = "csp-sim";
+const simSave = (key, sc) => { try { localStorage.setItem(SIM_CACHE, JSON.stringify({ key, base: sc.base, n: sc.n, teams: Object.fromEntries(Object.entries(sc.teams).map(([i, r]) => [i, { ...r, usage: r.usage.map((u) => Array.from(u)) }])) })); } catch {} };
+const simLoad = (key) => { try { const c = JSON.parse(localStorage.getItem(SIM_CACHE) || "null"); return c && c.key === key ? c : null; } catch { return null; } };
 function useSimPlan(data, picks, params, n = SIM_PLAYOUTS) {
   const inp = useMemo(() => simInputs(data, picks, params, n), [data, picks, params, n]);
   const key = inp?.key || "", [, bump] = useState(0);
+  if (inp && !simStore.has(key)) { const c = simLoad(key); if (c) simStore.set(key, simFromScores(data, picks, params, inp, c)); }
   useEffect(() => {
     if (!inp || simStore.has(key)) return;
     if (typeof Worker === "undefined") { simStore.set(key, simFromScores(data, picks, params, inp, scoreCandidates(simArgs(inp.msg)))); bump((x) => x + 1); return; }
     if (!simWorker) simWorker = new Worker(new URL("./sim.worker.js", import.meta.url), { type: "module" });
-    const id = ++simSeq, onMsg = (e) => { if (e.data.id !== id) return; simWorker.removeEventListener("message", onMsg); simStore.set(key, simFromScores(data, picks, params, inp, e.data)); bump((x) => x + 1); };
+    const id = ++simSeq, onMsg = (e) => { if (e.data.id !== id) return; simWorker.removeEventListener("message", onMsg); simStore.set(key, simFromScores(data, picks, params, inp, e.data)); simSave(key, e.data); bump((x) => x + 1); };
     simWorker.addEventListener("message", onMsg);
     simWorker.postMessage({ id, ...inp.msg });
     return () => simWorker?.removeEventListener("message", onMsg);
   }, [inp, key]);
   return inp ? simStore.get(key) || null : { plan: [], currentLeg: null, winOut: 0, weakest: [], rows: {}, base: 1, samples: n, xmas: [] };
-}
-// Claude's 96 Map: the plan with the best chance of winning every week across the jiggled seasons (survivalPath),
-// with the 96 noisy solves supplying how often each pick held its week. It used to be assembled from those votes,
-// one week at a time by count, which never multiplies anything out: it took the Rams at 87% in Week 6 and paid with
-// Pittsburgh at 46% on Thanksgiving, a plan about 15% less likely to win out on fresh seasons. The backup is the
-// strongest team the plan leaves free that week.
-export function consensusPlan(data, picks, params = PRIOR) {
-  const base = planMap(data, picks, params), tab = seasonTable(data, params), legIdx = mapLegs(tab, null);
-  const spent = spentTeams(data, picks), bi = ALL_TEAMS.map((t) => spent.has(t));
-  const path = survivalPath(tab, legIdx, bi), used = new Set(path.map((q) => q.team).filter(Boolean)), before = new Set(spent);
-  const plan = path.map((q, j) => {
-    const alt = freeBest(tab, q.k, used, bi);
-    const row = { leg: q.leg, team: q.team, win: q.win, held: q.team ? base.byLeg[j][q.team] || 0 : 0, samples: MAP_SAMPLES, backup: alt?.team || null, backupWin: alt?.win ?? null, backupHeld: alt ? base.byLeg[j][alt.team] || 0 : 0, ...holidayPool(q.leg, before) };
-    if (q.team) before.add(q.team);
-    return row;
-  });
-  const live = plan.filter((p) => p.team);
-  return { plan, currentLeg: base.currentLeg, nowLeg: base.nowLeg, winOut: live.length === plan.length && plan.length ? live.reduce((x, p) => x * p.win, 1) : 0, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), free: base.free, samples: MAP_SAMPLES };
 }
 // share of the field still holding each team going into legId, from actual picks in earlier legs
 function availability(legId, data) { return cached(data, "av", legId, () => availabilityRaw(legId, data)); }
@@ -1501,18 +1450,19 @@ export default function CircaSurvivorPlanner() {
 
   const params = useMemo(() => fitParams(data), [data]);
   // the playout forfeit beside the current one, for the comparison phase (tooltips and Model details only)
-  const simNow = useSimPlan(data, entry?.picks, params), simRows = entry && legId === LEGS[lockedIdx(data)]?.id && simNow ? simNow.rows : {};
+  const simNow = useSimPlan(data, entry?.picks, params), simCurrent = legId === LEGS[lockedIdx(data)]?.id, simRows = entry && simCurrent && simNow ? simNow.rows : {};
+  const simForfeits = simCurrent ? forfeitsOf(simNow) : null;
   const merr = useMemo(() => modelError(data, params), [data, params]);
   // per-team stats for selected leg (also computed on the previous refresh's data, for the deltas)
   const burned = useMemo(() => { const b = spentTeams(data, entry.picks); b.delete(entry.picks[legId]); return b; }, [data, entry, legId]);
   const statsAll = useMemo(() => {
     const cur = computeStats(legId, data, params);
-    const map = computeDili(legId, cur.rows, data, burned, params);
+    const map = computeDili(legId, cur.rows, data, burned, params, null, simForfeits);
     for (const t of ALL_TEAMS) { const r = cur.rows[t]; if (r.dili != null && r.evLo != null && Number.isFinite(r.forfeit)) { r.diliLo = r.evLo / r.forfeit; r.diliHi = r.evHi / r.forfeit; } }
     for (const t of ALL_TEAMS) { const r = cur.rows[t]; if (r.fv == null || burned.has(t)) continue; const f = futureFor(legId, t, data, burned); r.fvRaw = f.raw; r.fvEntry = f.entry; r.fvW = f.w; r.fv = f.blend; }
     const prev = data.prev ? computeStats(legId, data.prev, params) : null;
     if (prev) {
-      computeDili(legId, prev.rows, data.prev, burned, params);
+      computeDili(legId, prev.rows, data.prev, burned, params, null, simForfeits);
       for (const t of ALL_TEAMS) {
         const a = cur.rows[t], b = prev.rows[t];
         a.dEv = a.ev != null && b.ev != null ? a.ev - b.ev : null;
@@ -1526,7 +1476,7 @@ export default function CircaSurvivorPlanner() {
     for (const [key, flag] of [["dili", "diliTop"], ["ev", "evTop"], ["win", "winTop"]])
       ALL_TEAMS.filter((t) => cur.rows[t][key] != null).sort((a, b) => cur.rows[b][key] - cur.rows[a][key]).slice(0, TOP).forEach((t) => { cur.rows[t][flag] = true; });
     return { ...cur, map };
-  }, [data, legId, params, burned]);
+  }, [data, legId, params, burned, simForfeits]);
   const { rows: stats, ev: evInfo } = statsAll;
   const prevAt = data.prev?.oddsAt || null;
   const evNote = evInfo.blanked ? `EV unavailable: only ${evInfo.covered}/${evInfo.gamesTotal} games have a Win % (need ${Math.round(EV_MIN_COVERAGE * 100)}%)`
@@ -1544,8 +1494,8 @@ export default function CircaSurvivorPlanner() {
   const diliTip = (st, t) => {
     if (st.deadLeg) return `Burning this team leaves nothing eligible for ${legLabel(st.deadLeg)}: DILI 0`;
     const swaps = (st.swaps || []).map((p) => `${legLabel(p.leg)} ${p.from} ${pct(p.fromWin)} → ${p.to} ${pct(p.toWin)}`).join(", ");
-    const parts = st.forfeitMap != null && st.strengthW > 0 ? ` (map ${st.forfeitMap.toFixed(2)}, strength ${st.forfeitStr.toFixed(2)} at ${Math.round(100 * st.strengthW)}%)` : "";
-    const simNote = simRows[t]?.forfeit != null ? ` · the playouts put the forfeit at ${simRows[t].forfeit.toFixed(2)}, which would make DILI ${simRows[t].dili.toFixed(2)}` : "";
+    const parts = st.forfeitOld != null ? ` (from the playouts; the old method said ${st.forfeitOld.toFixed(2)})` : st.forfeitMap != null && st.strengthW > 0 ? ` (map ${st.forfeitMap.toFixed(2)}, strength ${st.forfeitStr.toFixed(2)} at ${Math.round(100 * st.strengthW)}%; provisional until the playouts finish)` : "";
+    const simNote = "";
     return `EV ${st.ev.toFixed(2)} ÷ forfeit ${st.forfeit.toFixed(2)}${parts} = ${st.dili.toFixed(2)}${simNote}${st.diliLo != null ? ` (likely ${st.diliLo.toFixed(2)}–${st.diliHi.toFixed(2)} at lock (middle half of outcomes))` : ""} · ${swaps ? `burning it changes your map: ${swaps}` : "not on your projected map, so the forfeit is only the chance it turns into a spot later"}${st.dDili != null ? dTip("was", (st.dili - st.dDili).toFixed(2)) : ""}`;
   };
   const dTip = (label, was) => (prevAt ? ` · ${label} ${was} at the previous refresh (${fmtTime(prevAt)})` : "");
@@ -1715,7 +1665,7 @@ export default function CircaSurvivorPlanner() {
             </div>
             <div className="row">
               {canEdit && <button className="btn" onClick={updateLines} disabled={updating} title="Pull fresh moneylines from the sportsbooks now (otherwise twice a day)">{updating ? "Updating…" : "Update lines"}</button>}
-              <span className={"note" + (status ? (statusErr ? " err" : " msg") : "")} title={!status ? `Lines update automatically twice a day. ${stamp}` : undefined}>{!loaded ? "Loading…" : status || <>{lineNote}{pulled && <span className="sub">{pulled}</span>}</>}</span>
+              <span className={"note" + (status ? (statusErr ? " err" : " msg") : "")} title={!status ? `Lines update automatically twice a day. ${stamp}` : undefined}>{!loaded ? "Loading…" : status || <>{lineNote}{pulled && <span className="sub">{pulled}</span>}{simCurrent && !simNow && <span className="sub">Forfeits provisional: the playouts are running…</span>}</>}</span>
             </div>
           </div>
         </div>
@@ -1846,7 +1796,7 @@ function AuditPanel({ legId, data, params, merr, stats, evNote, map }) {
               <td className="mut">{pc(stats[t].pm, 1)}</td>
               <td>{pc(stats[t].pick, 1)}</td>
               <td>{stats[t].ev == null ? "–" : stats[t].ev.toFixed(2)}</td>
-              <td className="mut" title={(stats[t].forfeitMap != null ? `map ${stats[t].forfeitMap.toFixed(3)} · strength ${stats[t].forfeitStr.toFixed(3)} at ${Math.round(100 * stats[t].strengthW)}%` : "") + (simRows[t]?.forfeit != null ? ` · playout ${simRows[t].forfeit.toFixed(3)}` : "") + ((stats[t].swaps || []).length ? " · " + stats[t].swaps.map((p) => `${legLabel(p.leg)} ${p.from} → ${p.to}`).join(", ") : "")}>{stats[t].forfeit == null ? "–" : stats[t].forfeit === Infinity ? "∞" : stats[t].forfeit.toFixed(3)}</td>
+              <td className="mut" title={(stats[t].forfeitOld != null ? `playouts ${stats[t].forfeit.toFixed(3)} · old method ${stats[t].forfeitOld.toFixed(3)} (map ${stats[t].forfeitMap.toFixed(3)}, strength ${stats[t].forfeitStr.toFixed(3)})` : stats[t].forfeitMap != null ? `map ${stats[t].forfeitMap.toFixed(3)} · strength ${stats[t].forfeitStr.toFixed(3)} at ${Math.round(100 * stats[t].strengthW)}% · provisional until the playouts finish` : "") + ((stats[t].swaps || []).length ? " · " + stats[t].swaps.map((p) => `${legLabel(p.leg)} ${p.from} → ${p.to}`).join(", ") : "")}>{stats[t].forfeit == null ? "–" : stats[t].forfeit === Infinity ? "∞" : stats[t].forfeit.toFixed(3)}</td>
               <td className="fin">{stats[t].dili == null ? "–" : stats[t].dili.toFixed(2)}</td>
             </tr>
           ))}
@@ -1960,11 +1910,9 @@ function PickPicker({ legId, team, data, usedAt, onPick, canEdit, conflict, lock
   );
 }
 function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
-  const dili = useMemo(() => diliPlan(data, entry.picks, params), [data, entry, params]);
-  const cons = useMemo(() => consensusPlan(data, entry.picks, params), [data, entry, params]);
-  const rules = useMemo(() => rulesPlan(data, entry.picks, params), [data, entry, params]);
   const sim = useSimPlan(data, entry.picks, params);   // null while the worker is still running the playouts
-  const [tab, setTab] = useState("dili");
+  const rules = useMemo(() => rulesPlan(data, entry.picks, params, undefined, forfeitsOf(sim)), [data, entry, params, sim]);
+  const [tab, setTab] = useState("rules");
   // your own map tabs can be dragged into a new order; the order is saved with the maps
   const [drag, setDrag] = useState(null), [over, setOver] = useState(null);
   const dropAt = (e, m) => { e.preventDefault(); if (!drag || drag === m.id) return; const r = e.currentTarget.getBoundingClientRect(); setOver({ id: m.id, after: e.clientX > r.left + r.width / 2 }); };
@@ -1978,18 +1926,18 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
     setDrag(null); setOver(null);
   };
   const custom = maps.find((m) => m.id === tab) || null;
-  const cs = useMemo(() => (custom ? customSummary(data, entry, custom, dili) : null), [data, entry, custom, dili]);
-  const lockAt = useMemo(() => locksPicks(dili, cons), [dili, cons]);
-  const locks = useMemo(() => { const lk = customSummary(data, entry, { picks: locksPicks(dili, cons) }, dili), filled = lk.rows.filter((r) => r.team && r.win != null); return { ...lk, filled: filled.length, winOut: filled.reduce((x, r) => x * r.win, 1) }; }, [data, entry, dili, cons]);
+  const cs = useMemo(() => (custom ? customSummary(data, entry, custom, rules) : null), [data, entry, custom, rules]);
+  const lockAt = useMemo(() => (sim ? locksPicks(rules, sim) : {}), [rules, sim]);
+  const locks = useMemo(() => { const lk = customSummary(data, entry, { picks: lockAt }, rules), filled = lk.rows.filter((r) => r.team && r.win != null); return { ...lk, filled: filled.length, winOut: filled.reduce((x, r) => x * r.win, 1) }; }, [data, entry, rules, lockAt]);
   if (status && !status.alive) return <div className="act mapv"><p className="lede">{entry.name} is out ({legLabel(status.leg)}). Nothing left to map.</p></div>;
-  const res = tab === "96" ? cons : tab === "rules" ? rules : tab === "sim" ? (sim || { plan: [], winOut: 0, weakest: [], currentLeg: dili.currentLeg, xmas: [], samples: SIM_PLAYOUTS }) : dili;
+  const res = tab === "sim" ? (sim || { plan: [], winOut: 0, weakest: [], currentLeg: rules.currentLeg, xmas: [], samples: SIM_PLAYOUTS }) : rules;
   const planned = Object.fromEntries(res.plan.map((p) => [p.leg.id, p]));
   const planWeek = Object.fromEntries(res.plan.filter((p) => p.team).map((p) => [p.team, p.leg]));
-  const nowId = dili.currentLeg?.id;
+  const nowId = rules.currentLeg?.id;
   const create = () => {
     const name = window.prompt("Name this map", `Map ${maps.length + 1}`); if (!name?.trim()) return;
     const id = Date.now().toString(36);
-    const picks = Object.fromEntries(dili.plan.filter((p) => p.team).map((p) => [p.leg.id, p.team]));
+    const picks = Object.fromEntries(rules.plan.filter((p) => p.team).map((p) => [p.leg.id, p.team]));
     onMaps((m) => ({ maps: [...m.maps, { id, name: name.trim(), entry: entry.name, picks }] }), `Map: new "${name.trim()}" for ${entry.name}`);
     setTab(id);
   };
@@ -2000,7 +1948,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
   const remove = () => {
     if (!window.confirm(`Delete the map "${custom.name}"?`)) return;
     onMaps((m) => ({ maps: m.maps.filter((x) => x.id !== custom.id) }), `Map: delete "${custom.name}"`);
-    setTab("dili");
+    setTab("rules");
   };
   const setMapPick = (legId, team) => onMaps((m) => ({ maps: m.maps.map((x) => { if (x.id !== custom.id) return x; const picks = { ...x.picks }; if (team) picks[legId] = team; else delete picks[legId]; return { ...x, picks }; }) }), `Map "${custom.name}": ${legId} ${team || "empty"}`);
 
@@ -2009,20 +1957,12 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
         cheap: cs.cheap.map((f) => <span key={f.team} title={`${f.team} is ${pct0(f.win)} to win this week and is not used later in this map`}>{teamChip(f.team, true)} <span className="mut">({pct0(f.win)})</span></span>),
         cheapCap: (lg) => `free to burn in ${lg} under this map: favorites (win %) it does not use later` }
     : tab === "locks"
-    ? { winOut: locks.winOut, winCap: `chance of winning the ${locks.filled} locked week${locks.filled === 1 ? "" : "s"}`, weakest: locks.weakest, cheapLeg: locks.now,
+    ? { winOut: sim ? locks.winOut : null, winNote: sim ? null : "running the playouts…", winCap: `chance of winning the ${locks.filled} locked week${locks.filled === 1 ? "" : "s"}`, weakest: locks.weakest, cheapLeg: locks.now,
         cheap: locks.cheap.map((f) => <span key={f.team} title={`${f.team} is ${pct0(f.win)} to win this week and is not locked for a later week`}>{teamChip(f.team, true)} <span className="mut">({pct0(f.win)})</span></span>),
         cheapCap: (lg) => `free to burn in ${lg}: favorites (win %) not locked for a later week` }
-    : tab === "rules"
-    ? { winOut: rules.winOut, weakest: rules.weakest, cheapLeg: rules.currentLeg, rule: true }
     : tab === "sim"
     ? { winOut: sim ? res.winOut : null, winNote: sim ? null : "running the playouts…", weakest: res.weakest, cheapLeg: res.currentLeg, simBox: true, expected: sim ? res.expected : null }
-    : tab === "96"
-    ? { winOut: cons.winOut, weakest: cons.weakest, cheapLeg: cons.nowLeg,
-        cheap: cons.free.map((f) => <span key={f.team} title={`${f.team} is ${pct0(f.win)} to win this week and gets used in a later week in ${Math.round(100 * f.onMap)}% of the ${cons.samples} seasons`}>{teamChip(f.team, true)} <span className="mut">({pct0(f.win)})</span> {pct0(f.onMap)}</span>),
-        cheapCap: (lg) => `cheapest to burn in ${lg}: team (win %) and the chance a later week needs them` }
-    : { winOut: dili.winOut, weakest: dili.weakest, cheapLeg: dili.currentLeg,
-        cheap: dili.cheap.map((f) => <span key={f.team} title={`${f.team} is ${pct0(f.win)} to win this week; spending them costs this entry ${Math.round(100 * (f.forfeit - 1))}%`}>{teamChip(f.team, true)} <span className="mut">({pct0(f.win)})</span> {Math.round(100 * (f.forfeit - 1))}%</span>),
-        cheapCap: (lg) => `cheapest to burn in ${lg}: team (win %) and what spending them costs this entry` };
+    : { winOut: rules.winOut, weakest: rules.weakest, cheapLeg: rules.currentLeg, rule: true };
   const pastRow = (l) => {
     const a = data.actuals[l.id], mine = entry.picks[l.id];
     const r = !mine ? "No pick" : a.won.includes(mine) ? "Won" : a.lost.includes(mine) ? "Lost" : "In progress";
@@ -2039,15 +1979,13 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
   return (
     <div className={"act mapv" + (rh < 34 ? " tight" : "")} ref={boxRef} style={{ "--mrh": rh + "px" }}>
       <div className="maptabs" onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOver(null); }}>
-        <div role="button" tabIndex={0} className={"tab claude" + (tab === "dili" ? " on" : "")} onClick={() => setTab("dili")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("dili"); } }} title="The Planner's pick each week, applied forward as if nothing changes">Claude's DILI Map</div>
-        <div role="button" tabIndex={0} className={"tab claude" + (tab === "96" ? " on" : "")} onClick={() => setTab("96")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("96"); } }} title="The plan the 96 jiggled seasons agree on">Claude's 96 Map</div>
         <div role="button" tabIndex={0} className={"tab claude" + (tab === "rules" ? " on" : "")} onClick={() => setTab("rules")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("rules"); } }} title="Hold three Christmas teams until Thanksgiving is played, then plan for survival">Claude Rules Map</div>
         <div role="button" tabIndex={0} className={"tab claude" + (tab === "sim" ? " on" : "")} onClick={() => setTab("sim")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("sim"); } }} title="Lines move and each week is re-picked as they do: the pick that wins out most often across the playouts">Claude Simulation Map</div>
         <div role="button" tabIndex={0} className={"tab claude" + (tab === "locks" ? " on" : "")} onClick={() => setTab("locks")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("locks"); } }} title="The weeks where both Claude maps name the same team; the rest left empty">Claude Locks</div>
         {maps.map((m) => <div key={m.id} role="button" tabIndex={0} className={"tab" + (custom?.id === m.id ? " on" : "") + (drag === m.id ? " drag" : "") + (over?.id === m.id && drag !== m.id ? (over.after ? " ins-r" : " ins-l") : "")} onClick={() => setTab(m.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab(m.id); } }}
           draggable={canEdit} onDragStart={(e) => { e.dataTransfer.setData("text/plain", m.id); e.dataTransfer.effectAllowed = "move"; setDrag(m.id); }} onDragEnter={(e) => e.preventDefault()} onDragOver={(e) => dropAt(e, m)} onDrop={(e) => { e.preventDefault(); drop(); }} onDragEnd={() => { setDrag(null); setOver(null); }}
           title={canEdit && maps.length > 1 ? "Drag to reorder" : undefined}>{m.name}</div>)}
-        {canEdit && <div role="button" tabIndex={0} className="tab add" onClick={create} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); create(); } }} title="New map, starting from Claude's DILI Map">+</div>}
+        {canEdit && <div role="button" tabIndex={0} className="tab add" onClick={create} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); create(); } }} title="New map, starting from Claude Rules Map">+</div>}
         {custom && canEdit && <span className="tabact"><button className="link" onClick={rename}>Rename</button><button className="link" onClick={remove}>Delete</button></span>}
       </div>
       <div className="strip">
@@ -2061,22 +1999,20 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
         <thead>{custom
           ? <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th></th><th></th><th>Notes</th></tr>
           : tab === "locks"
-          ? <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title="What Claude's DILI Map has for this week">DILI Map</th><th title="What Claude's 96 Map has for this week">96 Map</th><th>Notes</th></tr>
+          ? <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title="What Claude Rules Map has for this week">Rules</th><th title="What Claude Simulation Map has for this week">Simulation</th><th>Notes</th></tr>
           : tab === "sim"
           ? <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title={`This week: EV ÷ the playout forfeit. Later weeks: the share of ${res.samples} playouts that used this team here`}>Used</th><th title="This week: runner-up by DILI. Later weeks: the team used next most often here">Backup</th><th>Why</th></tr>
-          : tab === "96"
-          ? <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title={`How many of ${cons.samples} jiggled seasons put this team here`}>Held</th><th title="Runner-up by count, not used elsewhere on this map">Backup</th><th>Why</th></tr>
           : <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title="DILI for that week, scored as the Planner scores it">DILI</th><th title="This week: second-best DILI. Later weeks: the strongest team the plan leaves free">Backup</th><th>Why</th></tr>}</thead>
         <tbody>
-          {tab === "sim" && !sim && <tr><td colSpan={7} className="why">Running {SIM_PLAYOUTS} playouts of the rest of the season…</td></tr>}
+          {(tab === "sim" || tab === "locks") && !sim && <tr><td colSpan={7} className="why">Running {SIM_PLAYOUTS} playouts of the rest of the season…</td></tr>}
           {LEGS.map((l) => {
             const p = planned[l.id];
             if (data.actuals[l.id] && !p) return pastRow(l);
             if (!p) return null;
             const cls = (l.holiday ? "hol" : "") + (l.id === nowId ? " cur" : "");
             if (tab === "locks") {
-              const r = locks.rows.find((x) => x.leg.id === l.id), d = p, c = cons.plan.find((x) => x.leg.id === l.id);
-              const note = r.team ? (r.win != null && r.win < 0.6 ? "Both maps agree, but it is a coin flip." : "Both maps agree.") : "The maps disagree, so nothing is locked.";
+              const r = locks.rows.find((x) => x.leg.id === l.id), d = p, c = sim?.plan.find((x) => x.leg.id === l.id);
+              const note = !sim ? "" : r.team ? (r.win != null && r.win < 0.6 ? "Both maps agree, but it is a coin flip." : "Both maps agree.") : "The maps disagree, so nothing is locked.";
               return (
                 <tr key={l.id} className={cls + (r.team ? "" : " open")}>
                   <td>{legLabel(l)}</td>
@@ -2107,7 +2043,6 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
             const soft = mine && mine !== p.team ? ` You have ${mine} entered for this week; this map would use ${mine} ${planWeek[mine] ? "in " + legLabel(planWeek[mine]) : "nowhere"}.` : "";
             let why;
             if (!p.team) why = "Nothing eligible left for this week: it would be a forfeit.";
-            else if (tab === "96") why = (p.held >= cons.samples / 2 ? "Solid." : p.held >= cons.samples / 3 ? "Leaning." : "Toss-up.") + holidayNote(p) + soft;
             else if (tab === "sim" && p.planned) why = ((p.options && p.options.length > 1 ? `Playouts used ${p.options.map(([t, x]) => `${t} ${pct0(x)}`).join(", ")}.` : "Used here in every playout.") + holidayNote(p) + soft).trim();
             else if (p.planned) why = ((tab === "rules" && l.id === "XM" && rules.held.length ? `Held back for this slate: ${rules.held.join(", ")}. ` : "") + (p.backup ? "" : "Nothing else is free this week.") + holidayNote(p) + soft).trim();
             else why = (p.backup == null ? "Only option." : p.dili - p.backupDili < 0.03 ? `Close call, ${p.backup} is ${(p.dili - p.backupDili).toFixed(2)} behind.` : `Clear, ${(p.dili - p.backupDili).toFixed(2)} ahead of ${p.backup}.`) + holidayNote(p) + soft;
@@ -2117,8 +2052,8 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
                 <td><span className="pc">{p.team ? teamChip(p.team) : "–"}</span></td>
                 <td>{p.team ? gameText(l.id, p.team, data) : ""}</td>
                 <td className={p.win != null && p.win < 0.6 ? "weak" : ""}>{pct0(p.win)}</td>
-                <td>{tab === "96" ? (p.team ? `${p.held}/${p.samples}` : "") : tab === "sim" && p.planned ? (p.team ? pct0(p.held) : "") : (p.dili != null ? p.dili.toFixed(2) : "")}</td>
-                <td className="bk">{p.backup ? <>{teamChip(p.backup, true)} {tab === "96" ? `${p.backupHeld}/${p.samples}` : tab === "sim" && p.planned ? pct0(p.backupHeld) : p.backupDili != null ? p.backupDili.toFixed(2) : pct0(p.backupWin)}</> : "–"}</td>
+                <td>{tab === "sim" && p.planned ? (p.team ? pct0(p.held) : "") : (p.dili != null ? p.dili.toFixed(2) : "")}</td>
+                <td className="bk">{p.backup ? <>{teamChip(p.backup, true)} {tab === "sim" && p.planned ? pct0(p.backupHeld) : p.backupDili != null ? p.backupDili.toFixed(2) : pct0(p.backupWin)}</> : "–"}</td>
                 <td className="why" title={why}>{why}</td>
               </tr>
             );

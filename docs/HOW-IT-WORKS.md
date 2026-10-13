@@ -132,19 +132,13 @@ fetch fails, last season's market ratings regressed 40% toward average are the f
   E[win] = Φ(z / √(1 + σ²)) averages each week's win chance over its line noise (`expWin`). Weeks are independent,
   so this maximizes the expected chance of winning every week over all jiggled seasons. `freeBest` gives the
   strongest team a plan leaves free in a week (its backup).
-- `diliPlan(data, picks, params)` is Claude's DILI Map: the current leg scored as the Planner does (market win + model
-  or actual shares, finals decided, `computeDili`), top DILI taken; then `survivalPath` over every later leg with
-  that team spent (rows `planned: true`, no DILI). Also returns winOut, weakest, and `cheap` (lowest forfeit among
-  this week's favorites). It used to pick later legs greedily one at a time; on fresh seasons that plan won out
-  ~17% less often than the joint plan.
-- `consensusPlan(data, picks, params)` is Claude's 96 Map: `survivalPath` over all open legs; Held counts from
-  `planMap().byLeg`; backup = `freeBest`. It used to maximize total per-week vote counts, which never multiplies
-  win chances and took LAR 87% in W6 for PIT 46% on Thanksgiving (~15% worse on fresh seasons).
-- `seasonTable` blocks both teams of a Thursday game already decided (Splash reading) in the current leg.
+- `planMap(data, picks, params)`: the plain survival plan (every open leg, best win-out at today's lines) with backups
+  and burn costs; used by custom maps and tests. `scoreCurrentWeek` scores the current leg exactly as the Planner does
+  (shared by the Rule map and the Simulation map).
 - `rulesPlan(data, picks, params, hold = RULE_HOLD)` is Claude Rules Map: enumerate every choice of `hold` (3) Christmas teams
   from the unspent pool, run `survivalPath` with those teams blocked in every leg before XM, keep the best value; a
   choice containing both sides of one Christmas game is preferred when within RULE_SLACK (2% of win-out). Active while
-  `nowIdx <= TG`; afterwards nothing is held. This week = top DILI not held (`scoreCurrentWeek`, shared with diliPlan).
+  `nowIdx <= TG`; afterwards nothing is held. This week = top DILI not held, with the playout forfeit once it is in.
   Returns held, pair, winOut and `freeWinOut` (same current pick, nothing held) for the price shown on the strip.
 - `simulate.js` is the playout engine (docs/PLAN-maps-redesign.md step 2): `solve` (assignment on E[win] over the
   movement still ahead), `simulate` (rolling re-plan week by week on a random walk of team-level shocks whose
@@ -154,10 +148,13 @@ fetch fails, last season's market ratings regressed 40% toward average are the f
 - `simPlan(data, picks, params)` / `useSimPlan` is Claude Simulation Map: inputs from seasonTable (z, ff for the
   current leg, SIM_OPP, SIM_SD by lead), scores from the engine, this week = top EV ÷ playout forfeit (rows carry
   `oldForfeit` for the comparison), later rows = most-used team per week not already shown, Christmas = usage spread.
-  512 playouts: forfeits move about ±0.01 between seeds. `SIM_TRUST` = 0.7: a later week's realized win chance blends
+  512 playouts: forfeits move about ±0.01 between seeds; the page caches the last result in localStorage (csp-sim).
+  `SIM_TRUST` = 0.7: a later week's realized win chance blends
   the moved line (70%) with today's (30%); the simulated planner still picks on the moved line. The Simulation map's
   `winOut` is the product of today's lines along its shown path (apples to apples); `expected` is win × rest.
-- `locksPicks(dili, cons)` is Claude Locks: the weeks where both maps name the same team; shown through
+- DILI's forfeit (`computeDili` with `forfeits`): the playout forfeit replaces the map/strength blend once the worker
+  is back (`forfeitsOf(sim)`); until then the blend stands, marked provisional. Rows keep `forfeitOld` for tooltips.
+- `locksPicks(rules, sim)` is Claude Locks: the weeks where the Rule map and the Simulation map name the same team;
   `customSummary` like a saved map, read-only.
 - `planMap(data, picks, params)` is the single-solve map underneath (also used by DILI's tooltips): the projected map, per-leg first-choice counts across the 96
   draws, the backup (what fills the leg after burning the pick) and cost, field ownership for near legs, the

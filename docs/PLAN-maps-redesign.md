@@ -85,6 +85,13 @@ between the two new maps.
 
 ## Status
 
+- 2026-10-13 (later): steps 4–5 done. Old DILI and 96 maps removed; tabs are Rules, Simulation, Locks (= Rules ∩
+  Simulation), customs. The Planner's forfeit is the playouts' (provisional old blend until the worker returns;
+  cached in localStorage so reloads are instant). Conservatism: PULL (far-out projections ×0.9/×0.8 toward even,
+  measured) and SIM_TRUST 0.7 (judgment). Retrospective on the Week 2–5 states: playout forfeits 1.00–1.27, all
+  finite, log-correlation 0.94–0.98 with the old forfeit, same top pick in every past week; Week 6 top reorders
+  (LAR 0.87, NE 0.84, IND 0.83 vs old NE 0.88, LAR 0.87, IND 0.87). Watch Thursday's Splash reading flow through.
+
 - 2026-10-13: plan agreed. Rule map built as a fourth Claude tab alongside the old maps (step 1 done); today the
   holdback (PHI, CHI, BUF) costs 0% of win-out because the survival plan does not spend them early anyway; holding a
   fourth would cost 20%. In the plan, held teams stay unused until Christmas; the rule stops constraining decisions

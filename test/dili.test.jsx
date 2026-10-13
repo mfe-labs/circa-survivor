@@ -1,5 +1,5 @@
 // DILI: EV net of what the team is worth to the rest of the entry's season (the map); and the futures-market prior.
-import { buildData, computeEV, computeDili, planMap, spentTeams, customSummary, fitParams, fvFor, strengthWeight, futureFor, diliPlan, consensusPlan, locksPicks, modelPick, marketLine, lineFor, seasonTable, mapLegs, expWin, survivalPath, rulesPlan, simPlan } from "../src/CircaSurvivorPlanner.jsx";
+import { buildData, computeEV, computeDili, planMap, spentTeams, customSummary, fitParams, fvFor, strengthWeight, futureFor, locksPicks, modelPick, marketLine, lineFor, seasonTable, mapLegs, expWin, survivalPath, rulesPlan, simPlan } from "../src/CircaSurvivorPlanner.jsx";
 import splash from "../data/splash.json";
 import { priorFromFutures } from "../src/ratings.js";
 import { OPP, ALL_TEAMS, LEGS, TG_TEAMS, XM_TEAMS } from "../src/schedule.js";
@@ -115,59 +115,42 @@ ok("future value on a readable scale", fvFor("W2", "KC", data) < 18 && fvFor("W2
   ok("empty weeks make the map incomplete, not wrong", gap.conflicts === 0 && gap.winOut === null && /no pick/.test(gap.winNote));
 })();
 
-// the maps are judged on survival: every planned week optimal, nothing beats them on fresh seasons
+// the two Claude maps on real data, and the played-Thursday block
 (() => {
   const real = buildData({ picks, actuals, odds, ratings, splash }), params = fitParams(real), e = picks.entries[0];
-  const tab = seasonTable(real, params), legIdx = mapLegs(tab, null), spent = spentTeams(real, e.picks);
-  const dp = diliPlan(real, e.picks, params), cp = consensusPlan(real, e.picks, params), pm = planMap(real, e.picks, params);
-  const idx = (t) => ALL_TEAMS.indexOf(t), K = (id) => LEGS.findIndex((l) => l.id === id);
-  const cost = (k, t) => { const i = idx(t), z = tab.z[k][i]; return Number.isNaN(z) ? Infinity : -(Math.log(expWin(tab, k, i)) + tab.ff[k][i]); };
-  // no single swap improves a plan: neither an unused team in one week nor trading two weeks' teams
-  const swapOk = (rows, fixed) => {
-    const used = new Set([...rows.map((q) => q.team), ...fixed]), bad = [];
-    rows.forEach((q) => { const k = K(q.leg.id), c = cost(k, q.team); for (const t of Object.keys(OPP[q.leg.id])) if (!used.has(t) && !spent.has(t) && cost(k, t) < c - 1e-9) bad.push(`${q.leg.id} ${q.team}→${t}`); });
-    for (let a = 0; a < rows.length; a++) for (let b = a + 1; b < rows.length; b++) { const ka = K(rows[a].leg.id), kb = K(rows[b].leg.id); if (cost(ka, rows[b].team) + cost(kb, rows[a].team) < cost(ka, rows[a].team) + cost(kb, rows[b].team) - 1e-9) bad.push(`swap ${rows[a].leg.id}/${rows[b].leg.id}`); }
-    return bad;
-  };
-  const b96 = swapOk(cp.plan, []), bDili = swapOk(dp.plan.filter((q) => q.planned), [dp.plan[0].team]);
-  ok("96 Map: no swap or unused team improves any week", b96.length === 0, b96.join(", "));
-  ok("DILI Map: after this week, no swap or unused team improves any week", bDili.length === 0, bDili.join(", "));
-  ok("DILI Map plans every later week together", dp.plan.slice(1).every((q) => q.planned) && dp.plan[0].dili != null);
-  // fresh jiggled seasons the maps never saw
-  let seed = 4242; const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return (seed + 0.5) / 2147483648; };
-  const gauss = () => Math.sqrt(-2 * Math.log(rnd())) * Math.cos(2 * Math.PI * rnd());
-  const ncdf = (x) => { const s = Math.sign(x), a = Math.abs(x) / Math.SQRT2, t = 1 / (1 + 0.3275911 * a); return 0.5 * (1 + s * (1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-a * a))); };
-  const plans = { "96": cp.plan.map((q) => q.team), single: pm.plan.map((q) => q.team) }, tot = { "96": 0, single: 0 }, N = 3000;
-  for (let n = 0; n < N; n++) { const eps = legIdx.map(() => ALL_TEAMS.map(gauss)); for (const [m, pl] of Object.entries(plans)) { let pr = 1; pl.forEach((t, j) => { const k = legIdx[j], i = idx(t); pr *= ncdf(tab.z[k][i] + tab.sd[k][i] * eps[j][i]); }); tot[m] += pr / N; } }
-  ok("96 Map wins out at least as often as the single solve on fresh seasons", tot["96"] >= tot.single * 0.995, `96 ${(100 * tot["96"]).toFixed(3)}% vs single ${(100 * tot.single).toFixed(3)}%`);
-  // the failure this replaced: an underdog while a strong team sits unused
+  const tab = seasonTable(real, params), spent = spentTeams(real, e.picks);
+  const rp = rulesPlan(real, e.picks, params), sp = simPlan(real, e.picks, params);
+  const idx = (t) => ALL_TEAMS.indexOf(t);
   const dog = (m) => m.plan.filter((q) => q.win != null && q.win < 0.5 && Object.keys(OPP[q.leg.id]).some((t) => !m.plan.some((r) => r.team === t) && !spent.has(t) && (lineFor(q.leg.id, t, real)?.win ?? 0) >= 0.6)).map((q) => `${q.leg.id} ${q.team}`);
-  ok("no map takes an underdog while a 60% team is unused", dog(cp).length === 0 && dog(dp).length === 0, [...dog(cp), ...dog(dp)].join(", "));
+  ok("no map takes an underdog while a 60% team is unused", dog(rp).length === 0 && dog(sp).length === 0, [...dog(rp), ...dog(sp)].join(", "));
+  ok("both maps put eligible teams on the holidays", [rp, sp].every((m) => m.plan.every((p) => !p.team || ((p.leg.id !== "TG" || TG_TEAMS.has(p.team)) && (p.leg.id !== "XM" || XM_TEAMS.has(p.team))))));
+  ok("both maps report a win-out on today's lines in a sane range", rp.winOut > 0.0005 && rp.winOut < 0.2 && sp.winOut > 0.0005 && sp.winOut < 0.2, `rules ${(100 * rp.winOut).toFixed(2)}% · simulation ${(100 * sp.winOut).toFixed(2)}% (expected with movement ${(100 * sp.expected).toFixed(2)}%)`);
+  const lk = locksPicks(rp, sp), bySim = Object.fromEntries(sp.plan.map((p) => [p.leg.id, p.team]));
+  ok("Claude Locks holds exactly the weeks both maps agree on", rp.plan.every((p) => (lk[p.leg.id] || null) === (p.team && bySim[p.leg.id] === p.team ? p.team : null)), `${Object.keys(lk).length} of ${rp.plan.length} weeks locked`);
   // a Thursday game already played can no longer be picked this week
   const now = LEGS[tab.nowIdx], thu = now && Object.keys(OPP[now.id]).find((t) => OPP[now.id][t].home === false);
   if (now && thu) {
-    const opp = OPP[now.id][thu].opp, sp = JSON.parse(JSON.stringify(splash));
-    sp.weeks[now.id] = { thursday: { asOf: "2026-10-16T00:30:00Z", alive: 2500, picks: { [thu]: 100, [opp]: 100 }, final: { [thu]: "L", [opp]: "W" } } };
-    const d2 = buildData({ picks, actuals, odds, ratings, splash: sp }), p2 = fitParams(d2);
-    const picksNow = [diliPlan(d2, e.picks, p2), consensusPlan(d2, e.picks, p2), planMap(d2, e.picks, p2)].map((m) => m.plan[0].team);
+    const opp = OPP[now.id][thu].opp, sp2 = JSON.parse(JSON.stringify(splash));
+    sp2.weeks[now.id] = { thursday: { asOf: "2026-10-16T00:30:00Z", alive: 2500, picks: { [thu]: 100, [opp]: 100 }, final: { [thu]: "L", [opp]: "W" } } };
+    const d2 = buildData({ picks, actuals, odds, ratings, splash: sp2 }), p2 = fitParams(d2);
+    const picksNow = [rulesPlan(d2, e.picks, p2), simPlan(d2, e.picks, p2)].map((m) => m.plan[0].team);
     const tab2 = seasonTable(d2, p2), kk = tab2.nowIdx, later = LEGS.findIndex((l, i) => i > kk && OPP[l.id][thu]);
-    ok("a played Thursday game is blocked this week only", Number.isNaN(tab2.z[kk][idx(thu)]) && Number.isNaN(tab2.z[kk][idx(opp)]) && !Number.isNaN(tab2.z[later][idx(thu)]) && !Number.isNaN(tab.z[kk][idx(thu)]));
-    ok("cheapest-to-burn never lists a played Thursday team", planMap(d2, e.picks, p2).free.every((f) => f.team !== thu && f.team !== opp));
     ok("no map picks a team whose Thursday game is over", picksNow.every((t) => t !== thu && t !== opp), `${now.id}: ${thu}/${opp} played; maps pick ${picksNow.join(", ")}`);
+    ok("a played Thursday game is blocked this week only", Number.isNaN(tab2.z[kk][idx(thu)]) && Number.isNaN(tab2.z[kk][idx(opp)]) && !Number.isNaN(tab2.z[later][idx(thu)]) && !Number.isNaN(tab.z[kk][idx(thu)]));
   }
 })();
 
 // the Rule map: hold three Christmas teams until Thanksgiving is played
 (() => {
   const real = buildData({ picks, actuals, odds, ratings, splash }), params = fitParams(real), e = picks.entries[0];
-  const rp = rulesPlan(real, e.picks, params), dp = diliPlan(real, e.picks, params), spent = spentTeams(real, e.picks);
+  const rp = rulesPlan(real, e.picks, params), spent = spentTeams(real, e.picks);
   const xm = LEGS.findIndex((l) => l.id === "XM"), K = (id) => LEGS.findIndex((l) => l.id === id);
   ok("rule is active before Thanksgiving and holds three Christmas teams", rp.active && rp.hold === 3 && rp.held.length === 3 && rp.held.every((t) => XM_TEAMS.has(t) && !spent.has(t)), rp.held.join(", "));
   ok("held teams are not used anywhere before Christmas", rp.plan.every((q) => !q.team || K(q.leg.id) >= xm || !rp.held.includes(q.team)));
   ok("Rule map fills every week with distinct teams, none spent", rp.plan.every((q) => q.team) && new Set(rp.plan.map((q) => q.team)).size === rp.plan.length && rp.plan.every((q) => !spent.has(q.team)));
   ok("the price is the win-out gap against the unconstrained plan", rp.freeWinOut != null && rp.freeWinOut >= rp.winOut - 1e-12, `rule ${(100 * rp.winOut).toFixed(3)}% vs free ${(100 * rp.freeWinOut).toFixed(3)}%`);
   const r0 = rulesPlan(real, e.picks, params, 0);
-  ok("with nothing held the Rule map is the DILI map", r0.held.length === 0 && r0.plan.map((q) => q.team).join() === dp.plan.map((q) => q.team).join() && Math.abs(r0.winOut - r0.freeWinOut) < 1e-12);
+  ok("with nothing held the Rule map has no price", r0.held.length === 0 && Math.abs(r0.winOut - r0.freeWinOut) < 1e-12);
   const r4 = rulesPlan(real, e.picks, params, 4);
   ok("holding more never raises win-out", r4.winOut <= rp.winOut + 1e-12 && rp.winOut <= r0.winOut + 1e-12, `hold 4 ${(100 * r4.winOut).toFixed(3)}% ≤ hold 3 ${(100 * rp.winOut).toFixed(3)}% ≤ hold 0 ${(100 * r0.winOut).toFixed(3)}%`);
   // given the reservation, no legal swap improves a later week
@@ -200,35 +183,6 @@ ok("future value on a readable scale", fvFor("W2", "KC", data) < 18 && fvFor("W2
   const both = rows.filter((r) => r.oldForfeit != null && Number.isFinite(r.oldForfeit));
   const corr = (() => { const n = both.length, mx = both.reduce((a, r) => a + Math.log(r.forfeit), 0) / n, my = both.reduce((a, r) => a + Math.log(r.oldForfeit), 0) / n; const sxy = both.reduce((a, r) => a + (Math.log(r.forfeit) - mx) * (Math.log(r.oldForfeit) - my), 0), sx = Math.sqrt(both.reduce((a, r) => a + (Math.log(r.forfeit) - mx) ** 2, 0)), sy = Math.sqrt(both.reduce((a, r) => a + (Math.log(r.oldForfeit) - my) ** 2, 0)); return sx && sy ? sxy / (sx * sy) : 0; })();
   ok("playout forfeits broadly agree with the current forfeits (comparison phase)", corr > 0.3, `correlation ${corr.toFixed(2)} over ${both.length} teams`);
-})();
-
-// the two Claude maps
-(() => {
-  const real = buildData({ picks, actuals, odds, ratings }), params = fitParams(real), e = picks.entries[0];
-  const t0 = Date.now(); const dp = diliPlan(real, e.picks, params); const ms = Date.now() - t0;
-  const cp = consensusPlan(real, e.picks, params);
-  const open = LEGS.filter((l) => !real.actuals[l.id]);
-  ok("DILI map fills every open week with distinct teams", dp.plan.length >= open.length && dp.plan.every((p) => p.team) && new Set(dp.plan.map((p) => p.team)).size === dp.plan.length, `${dp.plan.length} weeks, ${ms} ms`);
-  ok("DILI map is quick enough", ms < 3000, `${ms} ms`);
-  // its current week equals the Planner's top DILI
-  const leg = dp.plan[0].leg.id, act = real.actuals[leg], mp = modelPick(leg, real, params), rows = {};
-  const actTot = act ? Object.values(act.picks).reduce((x, y) => x + y, 0) : 0;
-  for (const tm of ALL_TEAMS) { const m = marketLine(leg, tm, real); rows[tm] = { win: m ? m.win : null, pick: act ? (act.picks[tm] || 0) / actTot : mp[tm] ?? 0 }; }
-  // decided games read as decided, like the board
-  const finals = {}; if (act) { const mark = (x, f) => { if (!OPP[leg][x]) return; finals[x] = f; finals[OPP[leg][x].opp] = f === "W" ? "L" : "W"; }; for (const x of act.won) mark(x, "W"); for (const x of act.lost) if (x !== "NOPICK") mark(x, "L"); }
-  for (const [tm, f] of Object.entries(finals)) if (rows[tm]) rows[tm].win = f === "W" ? 1 : 0;
-  computeEV(leg, rows); for (const tm of Object.keys(finals)) if (rows[tm]) rows[tm].ev = null;
-  computeDili(leg, rows, real, spentTeams(real, e.picks), params);
-  const top = Object.keys(OPP[leg]).filter((tm) => rows[tm].dili != null).sort((x, y) => rows[y].dili - rows[x].dili)[0];
-  ok("DILI map's current week is the Planner's pick", dp.plan[0].team === top && Math.abs(dp.plan[0].dili - rows[top].dili) < 1e-9, `${leg}: ${dp.plan[0].team} vs ${top}`);
-  ok("DILI map never reuses a spent team", dp.plan.every((p) => !spentTeams(real, e.picks).has(p.team)));
-  ok("96 map fills every open week with distinct teams and counts out of 96", cp.plan.length === dp.plan.length && cp.plan.every((p) => p.team && p.held >= 0 && p.held <= 96) && new Set(cp.plan.map((p) => p.team)).size === cp.plan.length);
-  ok("96 map never takes an underdog over a stronger team it has free", cp.plan.every((p) => !p.team || p.win >= 0.5 || !Object.keys(OPP[p.leg.id]).some((t) => !cp.plan.some((q) => q.team === t) && !spentTeams(real, e.picks).has(t) && (lineFor(p.leg.id, t, real)?.win ?? 0) >= 0.6)), cp.plan.map((p) => `${p.leg.id} ${p.team} ${Math.round(100 * p.win)}%`).join(" "));
-  const lk = locksPicks(dp, cp), by96 = Object.fromEntries(cp.plan.map((p) => [p.leg.id, p.team]));
-  ok("Claude Locks holds exactly the weeks both maps agree on", dp.plan.every((p) => (lk[p.leg.id] || null) === (p.team && by96[p.leg.id] === p.team ? p.team : null)), `${Object.keys(lk).length} of ${dp.plan.length} weeks locked`);
-  ok("96 map's backup is never a team it uses elsewhere", cp.plan.every((p) => !p.backup || !cp.plan.some((q) => q.team === p.backup)));
-  ok("both maps put eligible teams on the holidays", [dp, cp].every((m) => m.plan.every((p) => (p.leg.id !== "TG" || TG_TEAMS.has(p.team)) && (p.leg.id !== "XM" || XM_TEAMS.has(p.team)))));
-  ok("both maps report a chance of winning out", dp.winOut > 0 && dp.winOut < 0.2 && cp.winOut > 0 && cp.winOut < 0.2, `DILI ${(100 * dp.winOut).toFixed(2)}% · 96 ${(100 * cp.winOut).toFixed(2)}%`);
 })();
 
 // futures prior: monotone in title odds, centered, on a points scale
