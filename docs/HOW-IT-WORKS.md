@@ -140,6 +140,11 @@ fetch fails, last season's market ratings regressed 40% toward average are the f
   `planMap().byLeg`; backup = `freeBest`. It used to maximize total per-week vote counts, which never multiplies
   win chances and took LAR 87% in W6 for PIT 46% on Thanksgiving (~15% worse on fresh seasons).
 - `seasonTable` blocks both teams of a Thursday game already decided (Splash reading) in the current leg.
+- `rulesPlan(data, picks, params, hold = RULE_HOLD)` is Claude Rules Map: enumerate every choice of `hold` (3) Christmas teams
+  from the unspent pool, run `survivalPath` with those teams blocked in every leg before XM, keep the best value; a
+  choice containing both sides of one Christmas game is preferred when within RULE_SLACK (2% of win-out). Active while
+  `nowIdx <= TG`; afterwards nothing is held. This week = top DILI not held (`scoreCurrentWeek`, shared with diliPlan).
+  Returns held, pair, winOut and `freeWinOut` (same current pick, nothing held) for the price shown on the strip.
 - `locksPicks(dili, cons)` is Claude Locks: the weeks where both maps name the same team; shown through
   `customSummary` like a saved map, read-only.
 - `planMap(data, picks, params)` is the single-solve map underneath (also used by DILI's tooltips): the projected map, per-leg first-choice counts across the 96

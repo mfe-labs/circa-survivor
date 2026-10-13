@@ -85,4 +85,7 @@ between the two new maps.
 
 ## Status
 
-- 2026-10-13: plan agreed; Rule map in progress.
+- 2026-10-13: plan agreed. Rule map built as a fourth Claude tab alongside the old maps (step 1 done); today the
+  holdback (PHI, CHI, BUF) costs 0% of win-out because the survival plan does not spend them early anyway; holding a
+  fourth would cost 20%. In the plan, held teams stay unused until Christmas; the rule stops constraining decisions
+  once Thanksgiving is played (the maps then re-plan on real lines). Next: step 2, drift model + playout engine.

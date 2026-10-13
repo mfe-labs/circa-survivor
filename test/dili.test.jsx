@@ -1,5 +1,5 @@
 // DILI: EV net of what the team is worth to the rest of the entry's season (the map); and the futures-market prior.
-import { buildData, computeEV, computeDili, planMap, spentTeams, customSummary, fitParams, fvFor, strengthWeight, futureFor, diliPlan, consensusPlan, locksPicks, modelPick, marketLine, lineFor, seasonTable, mapLegs, expWin, survivalPath } from "../src/CircaSurvivorPlanner.jsx";
+import { buildData, computeEV, computeDili, planMap, spentTeams, customSummary, fitParams, fvFor, strengthWeight, futureFor, diliPlan, consensusPlan, locksPicks, modelPick, marketLine, lineFor, seasonTable, mapLegs, expWin, survivalPath, rulesPlan } from "../src/CircaSurvivorPlanner.jsx";
 import splash from "../data/splash.json";
 import { priorFromFutures } from "../src/ratings.js";
 import { OPP, ALL_TEAMS, LEGS, TG_TEAMS, XM_TEAMS } from "../src/schedule.js";
@@ -155,6 +155,34 @@ ok("future value on a readable scale", fvFor("W2", "KC", data) < 18 && fvFor("W2
     ok("cheapest-to-burn never lists a played Thursday team", planMap(d2, e.picks, p2).free.every((f) => f.team !== thu && f.team !== opp));
     ok("no map picks a team whose Thursday game is over", picksNow.every((t) => t !== thu && t !== opp), `${now.id}: ${thu}/${opp} played; maps pick ${picksNow.join(", ")}`);
   }
+})();
+
+// the Rule map: hold three Christmas teams until Thanksgiving is played
+(() => {
+  const real = buildData({ picks, actuals, odds, ratings, splash }), params = fitParams(real), e = picks.entries[0];
+  const rp = rulesPlan(real, e.picks, params), dp = diliPlan(real, e.picks, params), spent = spentTeams(real, e.picks);
+  const xm = LEGS.findIndex((l) => l.id === "XM"), K = (id) => LEGS.findIndex((l) => l.id === id);
+  ok("rule is active before Thanksgiving and holds three Christmas teams", rp.active && rp.hold === 3 && rp.held.length === 3 && rp.held.every((t) => XM_TEAMS.has(t) && !spent.has(t)), rp.held.join(", "));
+  ok("held teams are not used anywhere before Christmas", rp.plan.every((q) => !q.team || K(q.leg.id) >= xm || !rp.held.includes(q.team)));
+  ok("Rule map fills every week with distinct teams, none spent", rp.plan.every((q) => q.team) && new Set(rp.plan.map((q) => q.team)).size === rp.plan.length && rp.plan.every((q) => !spent.has(q.team)));
+  ok("the price is the win-out gap against the unconstrained plan", rp.freeWinOut != null && rp.freeWinOut >= rp.winOut - 1e-12, `rule ${(100 * rp.winOut).toFixed(3)}% vs free ${(100 * rp.freeWinOut).toFixed(3)}%`);
+  const r0 = rulesPlan(real, e.picks, params, 0);
+  ok("with nothing held the Rule map is the DILI map", r0.held.length === 0 && r0.plan.map((q) => q.team).join() === dp.plan.map((q) => q.team).join() && Math.abs(r0.winOut - r0.freeWinOut) < 1e-12);
+  const r4 = rulesPlan(real, e.picks, params, 4);
+  ok("holding more never raises win-out", r4.winOut <= rp.winOut + 1e-12 && rp.winOut <= r0.winOut + 1e-12, `hold 4 ${(100 * r4.winOut).toFixed(3)}% ≤ hold 3 ${(100 * rp.winOut).toFixed(3)}% ≤ hold 0 ${(100 * r0.winOut).toFixed(3)}%`);
+  // given the reservation, no legal swap improves a later week
+  const tab = seasonTable(real, params), idx = (t) => ALL_TEAMS.indexOf(t), held = new Set(rp.held);
+  const cost = (k, t) => { const i = idx(t), z = tab.z[k][i]; return Number.isNaN(z) || (k < xm && held.has(t)) ? Infinity : -(Math.log(expWin(tab, k, i)) + tab.ff[k][i]); };
+  const rows = rp.plan.filter((q) => q.planned), used = new Set(rp.plan.map((q) => q.team)), bad = [];
+  rows.forEach((q) => { const k = K(q.leg.id), c = cost(k, q.team); for (const t of Object.keys(OPP[q.leg.id])) if (!used.has(t) && !spent.has(t) && cost(k, t) < c - 1e-9) bad.push(`${q.leg.id} ${q.team}→${t}`); });
+  for (let a = 0; a < rows.length; a++) for (let b = a + 1; b < rows.length; b++) { const ka = K(rows[a].leg.id), kb = K(rows[b].leg.id); if (cost(ka, rows[b].team) + cost(kb, rows[a].team) < cost(ka, rows[a].team) + cost(kb, rows[b].team) - 1e-9) bad.push(`swap ${rows[a].leg.id}/${rows[b].leg.id}`); }
+  ok("Rule map: no legal swap improves any later week", bad.length === 0, bad.join(", "));
+  ok("Rule map backups never offer a held team before Christmas", rp.plan.every((q) => !q.backup || K(q.leg.id) >= xm || !held.has(q.backup)));
+  // the rule lifts once Thanksgiving is played: fake actuals through TG
+  const tg = LEGS.findIndex((l) => l.id === "TG"), fake = { ...actuals, legs: { ...actuals.legs } }, fp = { ...e.picks };
+  for (let k = 0; k <= tg; k++) { const l = LEGS[k]; if (fake.legs[l.id]) continue; const w = Object.keys(OPP[l.id]).find((t) => OPP[l.id][t].home && !Object.values(fp).includes(t)); fake.legs[l.id] = { asOf: "test", picks: { [w]: 100 }, won: [w], lost: [], pending: [], fv: {} }; fp[l.id] = w; }
+  const later = buildData({ picks, actuals: fake, odds, ratings, splash }), rl = rulesPlan(later, fp, fitParams(later));
+  ok("the rule lifts after Thanksgiving", !rl.active && rl.held.length === 0 && rl.currentLeg?.id === "W12", `current ${rl.currentLeg?.id}, held ${rl.held.join(",") || "none"}`);
 })();
 
 // the two Claude maps
