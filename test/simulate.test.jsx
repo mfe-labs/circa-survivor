@@ -74,6 +74,14 @@ const drift = (lead) => (lead === 1 ? 1.5 : 3 + 0.25 * lead) / 11.5;
   ok("the default trust sits between no movement and full movement", mid >= Math.min(none, full) - 1e-12 && mid <= Math.max(none, full) + 1e-12 && SIM_TRUST > 0 && SIM_TRUST < 1, `0: ${none.toFixed(4)} · ${SIM_TRUST}: ${mid.toFixed(4)} · 1: ${full.toFixed(4)}`);
 })();
 
+// 3c. a fixed week takes its pick in every playout
+(() => {
+  const L = league(6, [[[0, 1, 0.75], [2, 3, 0.65], [4, 5, 0.55]], [[2, 0, 0.7], [4, 1, 0.6], [5, 3, 0.52]], [[4, 2, 0.8], [0, 3, 0.62], [1, 5, 0.58]]]);
+  const burned = new Array(6).fill(0); burned[3] = 1;
+  const r = simulate({ ...L, burned, sdLead: drift, n: 64, fixed: { 1: 3 } });
+  ok("a fixed week uses its team in every playout", r.usage[1][3] > 0.999 && [0, 2].every((j) => r.usage[j][3] < 1e-9), `week 1 team 3: ${r.usage[1][3].toFixed(2)}`);
+})();
+
 // 4. speed: a season-sized problem
 (() => {
   const games = (k) => Array.from({ length: 16 }, (_, g) => [(2 * g + k) % 32, (2 * g + 1 + 3 * k) % 32, 0.5 + 0.35 * ((g * 7 + k * 3) % 10) / 10]).filter(([h, a]) => h !== a);

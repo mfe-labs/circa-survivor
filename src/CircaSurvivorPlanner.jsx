@@ -411,6 +411,34 @@ function survivalPath(tab, legIdx, burnedIdx, blocked = null) {
     return { k, leg: LEGS[k], team: dead ? null : ALL_TEAMS[i], win: dead ? null : normCdf(tab.z[k][i]), ew: dead ? null : expWin(tab, k, i) };
   });
 }
+// The entry's own picks for weeks Circa has not locked: the Claude maps take them as given and plan around them.
+// { legIndex: teamIndex }; a pick of a spent team, a team with no game, or a team already fixed elsewhere is ignored.
+function fixedPicks(picks, tab, spent, except = null) {
+  const out = {}, seen = new Set();
+  for (let k = tab.nowIdx; k < LEGS.length; k++) {
+    const l = LEGS[k], t = picks?.[l.id];
+    if (!t || l.id === except || spent.has(t) || !OPP[l.id][t] || seen.has(t)) continue;
+    out[k] = ALL_TEAMS.indexOf(t); seen.add(t);
+  }
+  return out;
+}
+// survivalPath with some weeks already filled: those teams are spent everywhere else and their rows are kept as is
+function pathWithFixed(tab, legIdx, burnedIdx, fixed, blocked = null) {
+  const b = burnedIdx.slice(); for (const k of legIdx) if (fixed[k] != null) b[fixed[k]] = true;
+  const byK = Object.fromEntries(survivalPath(tab, legIdx.filter((k) => fixed[k] == null), b, blocked).map((q) => [q.k, q]));
+  return legIdx.map((k) => {
+    if (fixed[k] == null) return byK[k];
+    const i = fixed[k], z = tab.z[k][i], ok = !Number.isNaN(z);
+    return { k, leg: LEGS[k], team: ALL_TEAMS[i], win: ok ? normCdf(z) : 1, ew: ok ? expWin(tab, k, i) : 1, fixed: true };
+  });
+}
+const pathValue = (path) => path.reduce((v, q) => v + Math.log(q.team && q.ew ? q.ew : MAP_FLOOR), 0);
+// what each fixed pick costs the plan: the survival of the plan with every fixed pick vs with that one released
+function fixedCosts(tab, legIdx, burnedIdx, fixed, blocked = null) {
+  const V = pathValue(pathWithFixed(tab, legIdx, burnedIdx, fixed, blocked)), out = {};
+  for (const k of Object.keys(fixed).map(Number)) { if (!legIdx.includes(k)) continue; const f = { ...fixed }; delete f[k]; out[k] = Math.max(0, 1 - Math.exp(V - pathValue(pathWithFixed(tab, legIdx, burnedIdx, f, blocked)))); }
+  return out;
+}
 // the strongest team a plan leaves free in a week (its backup there)
 function freeBest(tab, k, used, burnedIdx, blocked = null) {
   let best = null;
@@ -547,44 +575,59 @@ export function locksPicks(a, b) {
 // a held team. The strip shows the held teams and the price of the rule against the unconstrained plan.
 const RULE_HOLD = 3, RULE_SLACK = Math.log(1.02);
 const combos = (xs, n) => (n === 0 ? [[]] : xs.flatMap((x, i) => combos(xs.slice(i + 1), n - 1).map((c) => [x, ...c])));
-export function rulesPlan(data, picks, params = PRIOR, hold = RULE_HOLD, forfeits = null) {
+export function rulesPlan(data, picks, params = PRIOR, hold = RULE_HOLD, forfeits = null, useFixed = true) {
   const tab = seasonTable(data, params), legIdx = mapLegs(tab, null), spent = spentTeams(data, picks), bi = ALL_TEAMS.map((t) => spent.has(t));
+  const fixed = useFixed ? fixedPicks(picks, tab, spent) : {}, fixedTeams = new Set(Object.values(fixed).map((i) => ALL_TEAMS[i]));
   const xm = LEGS.findIndex((l) => l.id === "XM"), tg = LEGS.findIndex((l) => l.id === "TG");
-  const pool = [...XM_TEAMS].filter((t) => !spent.has(t)), n = Math.min(hold, pool.length);
+  // a Christmas team the entry has already placed somewhere is not available to hold
+  const pool = [...XM_TEAMS].filter((t) => !spent.has(t) && !fixedTeams.has(t)), n = Math.min(hold, pool.length);
   const active = n > 0 && tab.nowIdx <= tg && legIdx.includes(xm);
-  const value = (path) => path.reduce((v, q) => v + (q.team ? Math.log(q.ew) : Math.log(MAP_FLOOR)), 0);
   const blockFor = (R) => { const S = new Set(R.map((t) => ALL_TEAMS.indexOf(t))); return (k, i) => k < xm && S.has(i); };
   const isPair = (R) => R.some((t) => R.includes(OPP.XM[t].opp));
   let held = [], pair = false;
   if (active) {
-    const cands = combos(pool, n).map((R) => ({ R, V: value(survivalPath(tab, legIdx, bi, blockFor(R))), pair: isPair(R) }));
+    const cands = combos(pool, n).map((R) => ({ R, V: pathValue(pathWithFixed(tab, legIdx, bi, fixed, blockFor(R))), pair: isPair(R) }));
     const best = Math.max(...cands.map((c) => c.V)), ok = cands.filter((c) => c.V >= best - RULE_SLACK);
     const pick = (ok.some((c) => c.pair) ? ok.filter((c) => c.pair) : ok).sort((a, b) => b.V - a.V)[0];
     held = pick.R; pair = pick.pair;
   }
   const blocked = held.length ? blockFor(held) : null;
-  // this week: the Planner's top DILI that is not held
+  // this week: the entry's pick if it has made one, else the Planner's top DILI that is not held
   const burned = new Set(spent), plan = [];
   const cur = scoreCurrentWeek(data, params, tab, burned, new Set(), forfeits);
-  let cheap = [];
+  let cheap = [], claudeNow = null;
   if (cur) {
-    const { l, rows } = cur, cands = cur.cands.filter((t) => !held.includes(t)), [t1, t2] = cands, r1 = t1 ? rows[t1] : null, r2 = t2 ? rows[t2] : null;
-    plan.push({ leg: l, team: t1 || null, win: r1?.win ?? null, dili: r1?.dili ?? null, forfeit: r1?.forfeit ?? null, backup: t2 || null, backupWin: r2?.win ?? null, backupDili: r2?.dili ?? null, ev: !!r1 && r1.ev != null, ...holidayPool(l, burned) });
-    cheap = cur.cheap.filter((c) => !held.includes(c.team));
+    const { l, rows } = cur, cands = cur.cands.filter((t) => !held.includes(t) && !(fixedTeams.has(t) && fixed[tab.nowIdx] !== ALL_TEAMS.indexOf(t)));
+    claudeNow = cands[0] || null;
+    const mine = fixed[tab.nowIdx] != null ? ALL_TEAMS[fixed[tab.nowIdx]] : null, t1 = mine || cands[0], t2 = cands.find((t) => t !== t1);
+    const r1 = t1 ? rows[t1] : null, r2 = t2 ? rows[t2] : null;
+    plan.push({ leg: l, team: t1 || null, win: r1?.win ?? (t1 ? lineFor(l.id, t1, data)?.win ?? null : null), dili: r1?.dili ?? null, forfeit: r1?.forfeit ?? null, backup: t2 || null, backupWin: r2?.win ?? null, backupDili: r2?.dili ?? null, ev: !!r1 && r1.ev != null, fixed: !!mine, ...holidayPool(l, burned) });
+    cheap = cur.cheap.filter((c) => !held.includes(c.team) && !fixedTeams.has(c.team));
     if (t1) burned.add(t1);
   }
   const rest = LEGS.map((l, i) => i).filter((i) => i > tab.nowIdx), bi2 = ALL_TEAMS.map((t) => burned.has(t));
-  const path = survivalPath(tab, rest, bi2, blocked), used = new Set(path.map((q) => q.team).filter(Boolean)), before = new Set(burned);
+  const path = pathWithFixed(tab, rest, bi2, fixed, blocked), used = new Set(path.map((q) => q.team).filter(Boolean)), before = new Set(burned);
   for (const q of path) {
     const alt = freeBest(tab, q.k, used, bi2, blocked);
-    plan.push({ leg: q.leg, team: q.team, win: q.win, dili: null, forfeit: null, backup: alt?.team || null, backupWin: alt?.win ?? null, backupDili: null, ev: false, planned: true, ...holidayPool(q.leg, before) });
+    plan.push({ leg: q.leg, team: q.team, win: q.win, dili: null, forfeit: null, backup: alt?.team || null, backupWin: alt?.win ?? null, backupDili: null, ev: false, planned: true, fixed: !!q.fixed, ...holidayPool(q.leg, before) });
     if (q.team) before.add(q.team);
   }
   const live = plan.filter((p) => p.team), winOut = live.length === plan.length && plan.length ? live.reduce((x, p) => x * p.win, 1) : 0;
   // the price of the rule: the same plan with nothing held
-  const freePath = cur ? survivalPath(tab, rest, bi2) : [];
+  const freePath = cur ? pathWithFixed(tab, rest, bi2, fixed) : [];
   const freeWinOut = cur && freePath.every((q) => q.team) ? plan[0].win * freePath.reduce((x, q) => x * q.win, 1) : null;
-  return { plan, currentLeg: LEGS[tab.nowIdx] || null, winOut, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), cheap, held, pair, active, hold: n, pool, freeWinOut };
+  // the entry's fixed picks: what Claude would have put there, and what each one costs
+  const notes = {};
+  if (Object.keys(fixed).length) {
+    const free = rulesPlan(data, picks, params, hold, forfeits, false), costs = fixedCosts(tab, legIdx, bi, fixed, blocked);
+    for (const p of plan) if (p.fixed) {
+      const k = LEGS.findIndex((l) => l.id === p.leg.id), isNow = k === tab.nowIdx, alt = isNow ? claudeNow : free.plan.find((q) => q.leg.id === p.leg.id)?.team;
+      // this week is compared on DILI, the Planner's measure; later weeks on the plan's chance of winning out
+      const dm = cur?.rows[p.team]?.dili, da = alt ? cur?.rows[alt]?.dili : null;
+      notes[p.leg.id] = { claude: alt || null, claudeWin: alt ? lineFor(p.leg.id, alt, data)?.win ?? null : null, cost: isNow ? (dm != null && da ? Math.max(0, 1 - dm / da) : 0) : costs[k] ?? 0, byDili: isNow };
+    }
+  }
+  return { plan, currentLeg: LEGS[tab.nowIdx] || null, winOut, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), cheap, held, pair, active, hold: n, pool, freeWinOut, notes };
 }
 // Claude Simulation Map (docs/PLAN-maps-redesign.md): what the model would do if it decided for itself, with
 // optionality priced by the playout engine in simulate.js. Every team with a game this week is scored by the chance
@@ -594,17 +637,18 @@ export function rulesPlan(data, picks, params = PRIOR, hold = RULE_HOLD, forfeit
 // week, with the share; the Christmas row shows the spread of options the plan keeps.
 // the key names everything the playouts depend on: the entry's spent teams, the fit, and the data snapshot (lines,
 // ratings, which weeks have Circa's picks, this week's Thursday reading), so a cached result is never reused on new data
-const simKey = (data, spent, params, n) => { const now = LEGS[lockedIdx(data)]?.id; return `${[...spent].sort().join(",")}|${params.a}|${params.b}|${params.c ?? 0}|${n}|${data.oddsAt}|${data.ratingsAt}|${Object.keys(data.actuals || {}).join(",")}|${data.splash?.weeks?.[now]?.thursday?.asOf || ""}`; };
+const simKey = (data, spent, params, n, fixed) => { const now = LEGS[lockedIdx(data)]?.id; return `${[...spent].sort().join(",")}|${Object.entries(fixed).map(([k, i]) => k + ":" + i).join(",")}|${params.a}|${params.b}|${params.c ?? 0}|${n}|${data.oddsAt}|${data.ratingsAt}|${Object.keys(data.actuals || {}).join(",")}|${data.splash?.weeks?.[now]?.thursday?.asOf || ""}`; };
 function simInputs(data, picks, params, n) {
   const spent = spentTeams(data, picks), tab = seasonTable(data, params), legIdx = mapLegs(tab, null);
   if (!legIdx.length) return null;
-  const burned = ALL_TEAMS.map((t) => (spent.has(t) ? 1 : 0)), now = legIdx[0];
+  const now = legIdx[0], fixedAll = fixedPicks(picks, tab, spent), fixed = { ...fixedAll }; delete fixed[now];   // this week stays open for scoring
+  const burned = ALL_TEAMS.map((t, i) => (spent.has(t) || Object.values(fixed).includes(i) ? 1 : 0));
   const candidates = ALL_TEAMS.map((t, i) => i).filter((i) => !burned[i] && !Number.isNaN(tab.z[now][i]));
   const sdByLead = Array.from({ length: 24 }, (_, L) => (L === 0 ? 0 : SIM_SD(L)));
-  return { key: simKey(data, spent, params, n), spent, tab, legIdx, msg: { z: legIdx.map((k) => tab.z[k]), zKeys: legIdx, ff: tab.ff[now], legs: legIdx, nTeams: ALL_TEAMS.length, burned, sdByLead, opp: legIdx.map((k) => SIM_OPP[k]), candidates, n, seed: SIM_SEED } };
+  return { key: simKey(data, spent, params, n, fixedAll), spent, tab, legIdx, fixed, fixedAll, msg: { fixed, z: legIdx.map((k) => tab.z[k]), zKeys: legIdx, ff: tab.ff[now], legs: legIdx, nTeams: ALL_TEAMS.length, burned, sdByLead, opp: legIdx.map((k) => SIM_OPP[k]), candidates, n, seed: SIM_SEED } };
 }
 // the worker gets rows keyed by leg index; rebuild that shape for the engine
-const simArgs = (m) => { const z = {}, ff = {}, opp = {}; m.zKeys.forEach((k, j) => { z[k] = m.z[j]; opp[k] = m.opp[j]; }); ff[m.legs[0]] = m.ff; return { z, ff, legs: m.legs, nTeams: m.nTeams, burned: m.burned, sdLead: (L) => m.sdByLead[Math.min(L, m.sdByLead.length - 1)], opp, candidates: m.candidates, n: m.n, seed: m.seed }; };
+const simArgs = (m) => { const z = {}, ff = {}, opp = {}; m.zKeys.forEach((k, j) => { z[k] = m.z[j]; opp[k] = m.opp[j]; }); ff[m.legs[0]] = m.ff; return { z, ff, legs: m.legs, nTeams: m.nTeams, burned: m.burned, sdLead: (L) => m.sdByLead[Math.min(L, m.sdByLead.length - 1)], opp, candidates: m.candidates, n: m.n, seed: m.seed, fixed: m.fixed }; };
 function simFromScores(data, picks, params, inp, sc) {
   const { spent, tab, legIdx, msg } = inp, n = msg.n, now = legIdx[0];
   const empty = { plan: [], currentLeg: null, winOut: 0, weakest: [], rows: {}, base: 1, samples: n, xmas: [] };
@@ -615,21 +659,32 @@ function simFromScores(data, picks, params, inp, sc) {
     const ev = cr?.ev ?? r.win, forfeit = Math.max(1, r.forfeit);
     rows[t] = { win: cr?.win ?? r.win, ev, forfeit, rest: r.rest, dili: ev / forfeit, usage: r.usage, oldForfeit: cr?.forfeit ?? null };
   }
-  const order = Object.keys(rows).sort((a, b) => rows[b].dili - rows[a].dili), [t1, t2] = order;
+  const order = Object.keys(rows).sort((a, b) => rows[b].dili - rows[a].dili), mineNow = inp.fixedAll[now] != null ? ALL_TEAMS[inp.fixedAll[now]] : null;
+  const t1 = mineNow && rows[mineNow] ? mineNow : order[0], t2 = order.find((t) => t !== t1);
   if (!t1) return empty;
   const r1 = rows[t1], r2 = t2 ? rows[t2] : null, l0 = LEGS[now], plan = [];
-  plan.push({ leg: l0, team: t1, win: r1.win, dili: r1.dili, forfeit: r1.forfeit, backup: t2 || null, backupWin: r2?.win ?? null, backupDili: r2?.dili ?? null, ev: true, held: 1, samples: n, ...holidayPool(l0, spent) });
+  plan.push({ leg: l0, team: t1, win: r1.win, dili: r1.dili, forfeit: r1.forfeit, backup: t2 || null, backupWin: r2?.win ?? null, backupDili: r2?.dili ?? null, ev: true, held: 1, samples: n, fixed: t1 === mineNow, ...holidayPool(l0, spent) });
   const before = new Set([...spent, t1]);
   // later rows read as one path: each week shows the most-used team not already shown in an earlier row (the
   // playouts are many different paths, so the raw per-week favorites can repeat a team)
   legIdx.slice(1).forEach((k, j) => {
     const l = LEGS[k], u = r1.usage[j], top = ALL_TEAMS.map((t, i) => [t, u[i]]).filter(([, x]) => x > 0).sort((a, b) => b[1] - a[1]);
     const free = top.filter(([t]) => !before.has(t)), [team, share] = free[0] || [null, 0], alt = free[1] || null;
-    plan.push({ leg: l, team, win: team ? lineFor(l.id, team, data)?.win ?? null : null, dili: null, forfeit: null, backup: alt ? alt[0] : null, backupWin: alt ? lineFor(l.id, alt[0], data)?.win ?? null : null, backupDili: null, backupHeld: alt ? alt[1] : 0, ev: false, planned: true, held: share, samples: n, options: top.slice(0, 4), ...holidayPool(l, before) });
+    plan.push({ leg: l, team, win: team ? lineFor(l.id, team, data)?.win ?? null : null, dili: null, forfeit: null, backup: alt ? alt[0] : null, backupWin: alt ? lineFor(l.id, alt[0], data)?.win ?? null : null, backupDili: null, backupHeld: alt ? alt[1] : 0, ev: false, planned: true, held: share, samples: n, options: top.slice(0, 4), fixed: inp.fixed[k] != null, ...holidayPool(l, before) });
     if (team) before.add(team);
   });
+  // the entry's fixed picks: what Claude would have put there (this week: the top DILI; later: the plain survival plan
+  // without the entry's picks), and what each costs the plan
+  const notes = {};
+  if (Object.keys(inp.fixedAll).length) {
+    const bi = ALL_TEAMS.map((t) => spent.has(t)), free = survivalPath(tab, legIdx, bi), costs = fixedCosts(tab, legIdx, bi, inp.fixedAll);
+    for (const p of plan) if (p.fixed) {
+      const k = LEGS.findIndex((l) => l.id === p.leg.id), isNow = k === now, alt = isNow ? order[0] : free.find((q) => q.k === k)?.team;
+      notes[p.leg.id] = { claude: alt || null, claudeWin: alt ? lineFor(p.leg.id, alt, data)?.win ?? null : null, cost: isNow ? (alt && rows[alt] ? Math.max(0, 1 - rows[p.team].dili / rows[alt].dili) : 0) : costs[k] ?? 0, byDili: isNow };
+    }
+  }
   const live = plan.filter((p) => p.team), xm = plan.find((p) => p.leg.id === "XM");
-  return { plan, currentLeg: l0, winOut: live.length === plan.length ? live.reduce((x, p) => x * p.win, 1) : 0, expected: r1.win * r1.rest, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), rows, base: sc.base, samples: n, xmas: xm?.options || [] };
+  return { notes, plan, currentLeg: l0, winOut: live.length === plan.length ? live.reduce((x, p) => x * p.win, 1) : 0, expected: r1.win * r1.rest, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), rows, base: sc.base, samples: n, xmas: xm?.options || [] };
 }
 // synchronous version (tests, and the fallback when workers are unavailable)
 export function simPlan(data, picks, params = PRIOR, n = SIM_PLAYOUTS) {
@@ -1158,6 +1213,8 @@ const CSS = `
 .csp .maptab tr.hol td:first-child { color:var(--sand-ink); font-weight:600; }
 .csp .maptab tr.dead td { color:var(--red); }
 .csp .maptab tr.open td { color:var(--ink3); }
+.csp .maptab tr.mine td.why { color:var(--ink); }
+.csp .maptab tr.mine td:nth-child(2) .chip { box-shadow:0 0 0 2px var(--surface), 0 0 0 3.5px var(--ink2); }
 .csp .strip .k { font-size:12px; color:var(--ink2); margin-top:3px; }
 .csp .strip .actions { display:flex; flex-direction:column; gap:6px; justify-content:center; margin-left:auto; }
 .csp .legcard { border:1px solid var(--rule); border-radius:10px; margin-bottom:16px; overflow:hidden; }
@@ -1456,15 +1513,17 @@ export default function CircaSurvivorPlanner() {
   const simForfeits = useMemo(() => (simCurrent ? forfeitsOf(simNow) : null), [simNow, simCurrent]);
   const merr = useMemo(() => modelError(data, params), [data, params]);
   // per-team stats for selected leg (also computed on the previous refresh's data, for the deltas)
-  const burned = useMemo(() => { const b = spentTeams(data, entry.picks); b.delete(entry.picks[legId]); return b; }, [data, entry, legId]);
+  // teams spent, plus the entry's own picks in other open weeks (taken as given, as the maps do); those weeks are skipped
+  const fixedOther = useMemo(() => { const sp = spentTeams(data, entry.picks), out = { teams: new Set(), legs: new Set() }; for (let k = lockedIdx(data); k < LEGS.length; k++) { const l = LEGS[k], t = entry.picks[l.id]; if (!t || l.id === legId || sp.has(t) || !OPP[l.id][t]) continue; out.teams.add(t); out.legs.add(l.id); } return out; }, [data, entry, legId]);
+  const burned = useMemo(() => { const b = spentTeams(data, entry.picks); b.delete(entry.picks[legId]); for (const t of fixedOther.teams) b.add(t); return b; }, [data, entry, legId, fixedOther]);
   const statsAll = useMemo(() => {
     const cur = computeStats(legId, data, params);
-    const map = computeDili(legId, cur.rows, data, burned, params, null, simForfeits);
+    const map = computeDili(legId, cur.rows, data, burned, params, fixedOther.legs, simForfeits);
     for (const t of ALL_TEAMS) { const r = cur.rows[t]; if (r.dili != null && r.evLo != null && Number.isFinite(r.forfeit)) { r.diliLo = r.evLo / r.forfeit; r.diliHi = r.evHi / r.forfeit; } }
     for (const t of ALL_TEAMS) { const r = cur.rows[t]; if (r.fv == null || burned.has(t)) continue; const f = futureFor(legId, t, data, burned); r.fvRaw = f.raw; r.fvEntry = f.entry; r.fvW = f.w; r.fv = f.blend; }
     const prev = data.prev ? computeStats(legId, data.prev, params) : null;
     if (prev) {
-      computeDili(legId, prev.rows, data.prev, burned, params, null, simForfeits);
+      computeDili(legId, prev.rows, data.prev, burned, params, fixedOther.legs, simForfeits);
       for (const t of ALL_TEAMS) {
         const a = cur.rows[t], b = prev.rows[t];
         a.dEv = a.ev != null && b.ev != null ? a.ev - b.ev : null;
@@ -1478,7 +1537,7 @@ export default function CircaSurvivorPlanner() {
     for (const [key, flag] of [["dili", "diliTop"], ["ev", "evTop"], ["win", "winTop"]])
       ALL_TEAMS.filter((t) => cur.rows[t][key] != null).sort((a, b) => cur.rows[b][key] - cur.rows[a][key]).slice(0, TOP).forEach((t) => { cur.rows[t][flag] = true; });
     return { ...cur, map };
-  }, [data, legId, params, burned, simForfeits]);
+  }, [data, legId, params, burned, simForfeits, fixedOther]);
   const { rows: stats, ev: evInfo } = statsAll;
   const prevAt = data.prev?.oddsAt || null;
   const evNote = evInfo.blanked ? `EV unavailable: only ${evInfo.covered}/${evInfo.gamesTotal} games have a Win % (need ${Math.round(EV_MIN_COVERAGE * 100)}%)`
@@ -2041,15 +2100,17 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
                 </tr>
               );
             }
-            const mine = entry.picks[l.id];
+            const mine = entry.picks[l.id], fx = p.fixed ? (tab === "sim" ? sim?.notes : rules.notes)?.[l.id] : null;
+            const yours = p.fixed ? "Your pick." + (fx?.claude && fx.claude !== p.team ? ` Claude would take ${fx.claude} (${pct0(fx.claudeWin)}) here; your pick costs ${Math.round(100 * fx.cost)}% ${fx.byDili ? "of DILI" : "of win-out"}.` : " Claude would pick it too.") : "";
             const soft = mine && mine !== p.team ? ` You have ${mine} entered for this week; this map would use ${mine} ${planWeek[mine] ? "in " + legLabel(planWeek[mine]) : "nowhere"}.` : "";
             let why;
             if (!p.team) why = "Nothing eligible left for this week: it would be a forfeit.";
+            else if (p.fixed) why = (yours + holidayNote(p)).trim();
             else if (tab === "sim" && p.planned) why = ((p.options && p.options.length > 1 ? `Playouts used ${p.options.map(([t, x]) => `${t} ${pct0(x)}`).join(", ")}.` : "Used here in every playout.") + holidayNote(p) + soft).trim();
             else if (p.planned) why = ((tab === "rules" && l.id === "XM" && rules.held.length ? `Held back for this slate: ${rules.held.join(", ")}. ` : "") + (p.backup ? "" : "Nothing else is free this week.") + holidayNote(p) + soft).trim();
             else why = (p.backup == null ? "Only option." : p.dili - p.backupDili < 0.03 ? `Close call, ${p.backup} is ${(p.dili - p.backupDili).toFixed(2)} behind.` : `Clear, ${(p.dili - p.backupDili).toFixed(2)} ahead of ${p.backup}.`) + holidayNote(p) + soft;
             return (
-              <tr key={l.id} className={cls + (p.team ? "" : " dead")}>
+              <tr key={l.id} className={cls + (p.team ? "" : " dead") + (p.fixed ? " mine" : "")}>
                 <td>{legLabel(l)}</td>
                 <td><span className="pc">{p.team ? teamChip(p.team) : "–"}</span></td>
                 <td>{p.team ? gameText(l.id, p.team, data) : ""}</td>

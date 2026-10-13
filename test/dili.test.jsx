@@ -185,6 +185,37 @@ ok("future value on a readable scale", fvFor("W2", "KC", data) < 18 && fvFor("W2
   ok("playout forfeits broadly agree with the current forfeits (comparison phase)", corr > 0.3, `correlation ${corr.toFixed(2)} over ${both.length} teams`);
 })();
 
+// picks the entry has entered for open weeks are taken as given by both Claude maps
+(() => {
+  const real = buildData({ picks, actuals, odds, ratings, splash }), params = fitParams(real), e = picks.entries[0];
+  const tab = seasonTable(real, params), now = LEGS[tab.nowIdx].id, spent = spentTeams(real, e.picks);
+  const base = rulesPlan(real, e.picks, params), baseSim = simPlan(real, e.picks, params);
+  // enter a current-week pick that is not Claude's, plus two later ones
+  const nowPick = Object.keys(OPP[now]).find((t) => !spent.has(t) && t !== base.plan[0].team && (lineFor(now, t, real)?.win ?? 0) > 0.6);
+  const mine = { ...e.picks, [now]: nowPick, W7: "CAR", W9: "NO" };
+  const rp = rulesPlan(real, mine, params), sp = simPlan(real, mine, params);
+  const team = (m, id) => m.plan.find((q) => q.leg.id === id)?.team;
+  ok("both maps keep every entered pick in its week", [rp, sp].every((m) => team(m, now) === nowPick && team(m, "W7") === "CAR" && team(m, "W9") === "NO"), `${now} ${nowPick}, W7 CAR, W9 NO`);
+  ok("an entered team is not used in any other week", [rp, sp].every((m) => m.plan.filter((q) => [nowPick, "CAR", "NO"].includes(q.team)).length === 3));
+  ok("entered rows are marked, the rest are not", [rp, sp].every((m) => m.plan.filter((q) => q.fixed).map((q) => q.leg.id).sort().join() === [now, "W7", "W9"].sort().join()));
+  ok("both maps still fill every week with distinct teams", [rp, sp].every((m) => m.plan.every((q) => q.team) && new Set(m.plan.map((q) => q.team)).size === m.plan.length));
+  ok("each entered pick reports Claude's alternative and a cost of 0 or more", [rp, sp].every((m) => [now, "W7", "W9"].every((id) => m.notes[id] && m.notes[id].cost >= 0 && m.notes[id].cost < 1)), `rules ${now}: ${rp.notes[now]?.claude} (${(100 * rp.notes[now]?.cost).toFixed(1)}%), W7 ${rp.notes.W7?.claude} (${(100 * rp.notes.W7?.cost).toFixed(1)}%)`);
+  ok("this week's alternative is Claude's own pick without the entries", rp.notes[now].claude === base.plan[0].team && sp.notes[now].claude === baseSim.plan[0].team);
+  ok("entering picks can only lower the win-out at today's lines", rp.winOut <= base.winOut + 1e-12, `${(100 * rp.winOut).toFixed(3)}% ≤ ${(100 * base.winOut).toFixed(3)}%`);
+  ok("no entries, no notes", Object.keys(base.notes).length === 0 && Object.keys(baseSim.notes).length === 0);
+  // given the entries, no legal swap improves the Rule map's other later weeks
+  const xm = LEGS.findIndex((l) => l.id === "XM"), K = (id) => LEGS.findIndex((l) => l.id === id), held = new Set(rp.held), idx = (t) => ALL_TEAMS.indexOf(t);
+  const cost = (k, t) => { const i = idx(t), z = tab.z[k][i]; return Number.isNaN(z) || (k < xm && held.has(t)) ? Infinity : -(Math.log(expWin(tab, k, i)) + tab.ff[k][i]); };
+  const rows = rp.plan.filter((q) => q.planned && !q.fixed), used = new Set(rp.plan.map((q) => q.team)), bad = [];
+  rows.forEach((q) => { const k = K(q.leg.id), c = cost(k, q.team); for (const t of Object.keys(OPP[q.leg.id])) if (!used.has(t) && !spent.has(t) && cost(k, t) < c - 1e-9) bad.push(`${q.leg.id} ${q.team}→${t}`); });
+  for (let a = 0; a < rows.length; a++) for (let b = a + 1; b < rows.length; b++) { const ka = K(rows[a].leg.id), kb = K(rows[b].leg.id); if (cost(ka, rows[b].team) + cost(kb, rows[a].team) < cost(ka, rows[a].team) + cost(kb, rows[b].team) - 1e-9) bad.push(`swap ${rows[a].leg.id}/${rows[b].leg.id}`); }
+  ok("with entries, no legal swap improves the Rule map's other weeks", bad.length === 0, bad.join(", "));
+  // a Christmas team entered before Thanksgiving is not held
+  const xmTeam = rp.held[0], early = { ...e.picks, W8: xmTeam };
+  const re = rulesPlan(real, early, params);
+  ok("a held Christmas team entered earlier is used there, and three others are held", team(re, "W8") === xmTeam && !re.held.includes(xmTeam) && re.held.length === Math.min(3, re.pool.length), `${xmTeam} in W8; held ${re.held.join(", ")}`);
+})();
+
 // futures prior: monotone in title odds, centered, on a points scale
 const probs = Object.fromEntries(ALL_TEAMS.map((t, i) => [t, 0.002 + 0.006 * i]));
 const prior = priorFromFutures(probs);

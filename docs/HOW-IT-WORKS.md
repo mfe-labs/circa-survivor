@@ -154,6 +154,12 @@ fetch fails, last season's market ratings regressed 40% toward average are the f
   `winOut` is the product of today's lines along its shown path (apples to apples); `expected` is win × rest.
 - DILI's forfeit (`computeDili` with `forfeits`): the playout forfeit replaces the map/strength blend once the worker
   is back (`forfeitsOf(sim)`); until then the blend stands, marked provisional. Rows keep `forfeitOld` for tooltips.
+- Entered picks: `fixedPicks(picks, tab, spent)` = the entry's picks for open legs ({leg: team}); `pathWithFixed` runs
+  survivalPath with those legs filled and teams spent; the playouts take a fixed leg's team (`fixed` in simulate.js).
+  The Rule map and the Simulation map honor all of them (this week included; the Simulation map scores this week
+  open and then shows the entered pick). The Planner's forfeit burns entered teams of other legs and skips those legs.
+  `notes[leg]` = Claude's own pick there and the cost (this week: 1 − DILI ratio; later: `fixedCosts`, survival with
+  vs without that one entry).
 - `locksPicks(rules, sim)` is Claude Locks: the weeks where the Rule map and the Simulation map name the same team;
   `customSummary` like a saved map, read-only.
 - `planMap(data, picks, params)` is the single-solve map underneath (also used by DILI's tooltips): the projected map, per-leg first-choice counts across the 96
