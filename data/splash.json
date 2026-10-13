@@ -135,12 +135,9 @@
      "TB": "W"
     }
    },
-   "survived": 2481,
-   "eliminated": 2597,
+   "survived": 2478,
+   "eliminated": 2600,
    "missed": 3,
-   "pending": {
-    "LAR": 3
-   },
    "picks": {
     "DAL": 1921,
     "HOU": 1016,

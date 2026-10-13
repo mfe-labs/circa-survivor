@@ -1041,6 +1041,12 @@ const CSS = `
 .csp .legcard .hd2 .legsel:hover { border-color:var(--ink3); }
 .csp .legcard .hd2 .m { font-size:12px; color:var(--ink2); }
 .csp .legcard .hd2 .m b { color:var(--ink); font-weight:600; }
+.csp .legcard .hd2 .spt { margin-left:auto; height:26px; line-height:24px; padding:0 10px; font-size:12px; color:var(--ink2); }
+.csp .legcard .hd2 .m + .spt { margin-left:0; }
+.csp .legcard .spline { padding:8px 14px; font-size:12px; color:var(--ink2); background:var(--panel); border-bottom:1px solid var(--rule); }
+.csp .legcard .spline b { color:var(--ink); font-weight:600; }
+.csp .dist td.spc { color:var(--ink2); white-space:nowrap; }
+.csp .dist td.spc .mut { color:var(--ink3); margin-left:3px; }
 .csp .dist { width:100%; border-collapse:collapse; font-size:12px; }
 .csp .dist th { position:static; height:auto; background:transparent; color:var(--ink2); font-size:11px; font-weight:500; padding:8px 12px; text-align:right; border:none; border-bottom:1px solid var(--rule2); cursor:default; }
 .csp .dist th:first-child, .csp .dist td:first-child { text-align:left; }
@@ -1948,6 +1954,12 @@ function Actuals({ data, params, canEdit, onSave }) {
   const pctOf = (n, d) => (d ? (100 * n / d).toFixed(n / d < 0.01 ? 2 : 1) + "%" : "–");
   const name = (t) => (t === "NOPICK" ? "No pick" : t);
   const nextLeg = LEGS.find((l) => !actuals[l.id]);
+  // Splash numbers beside Circa's, for checking what was entered from the screenshots; off unless switched on
+  const [showSp, setShowSp] = useState(() => { try { return localStorage.getItem("csp-show-splash") === "1"; } catch { return false; } });
+  const toggleSp = () => setShowSp((v) => { try { localStorage.setItem("csp-show-splash", v ? "0" : "1"); } catch {} return !v; });
+  const spWeek = (id) => data.splash?.weeks?.[id] || null;
+  const spBtn = data.splash ? <button className={"ghost spt" + (showSp ? " on" : "")} onClick={toggleSp} title="Show the Splash Survivor World Championship numbers next to Circa's">{showSp ? "Hide Splash" : "Show Splash"}</button> : null;
+  const thLeg = nextLeg && spWeek(nextLeg.id)?.thursday ? nextLeg : null;
 
   // series for chart: live entries per leg + equity
   const pts = [{ x: "Start", live: contest.start, eq: equity0 }, ...tl.map((r, i) => ({ x: r.leg.label, live: r.after, eq: entries.reduce((s, e) => s + (tl.slice(0, i + 1).every((q) => e.picks[q.leg.id] && !actuals[q.leg.id].lost.includes(e.picks[q.leg.id])) ? 1 : 0), 0) * contest.share * r.value }))];
@@ -1984,6 +1996,11 @@ function Actuals({ data, params, canEdit, onSave }) {
         const mp = modelPick(r.leg.id, data, params);
         const hasM = Object.keys(mp).length > 0;
         const fp = (v) => (v == null ? "" : v < 0.005 ? "<1%" : (100 * v).toFixed(v < 0.1 ? 1 : 0) + "%");
+        const sw = showSp ? spWeek(r.leg.id) : null, sp = sw?.picks ? sw : null, spN = sp ? sp.survived + sp.eliminated : 0;
+        const spTh = sw?.thursday && !sp ? sw.thursday : null;   // only the Thursday reading was entered
+        const spOnly = sp ? Object.keys(sp.picks).filter((t) => !a.picks[t]).sort((x, y) => sp.picks[y] - sp.picks[x]) : [];
+        const spCell = (t) => { const c = sp ? sp.picks[t] : spTh ? spTh.picks[t] : undefined; if (c == null || t === "NOPICK") return ""; return <>{num(c)} <span className="mut">{pctOf(c, sp ? spN : spTh.alive)}</span></>; };
+        const allRows = [...rows, ...spOnly.map((t) => [t, 0])];
         return (
           <div className="legcard" key={r.leg.id}>
             <div className="hd2">
@@ -1991,11 +2008,13 @@ function Actuals({ data, params, canEdit, onSave }) {
                 {tl.map((q) => <option key={q.leg.id} value={q.leg.id}>{legLabel(q.leg)}</option>)}
               </select>
               <span className="m"><b>{num(r.before)}</b> in → <b>{num(r.lost)}</b> out ({pctOf(r.lost, r.before)}) → <b>{num(r.after)}</b> live</span>
+              {spBtn}
             </div>
+            {showSp && <div className="spline">{sp ? <>Splash: <b>{num(spN)}</b> in → <b>{num(sp.eliminated)}</b> out ({pctOf(sp.eliminated, spN)}, {num(sp.missed || 0)} no pick) → <b>{num(sp.survived)}</b> live{sp.pending ? ` (${Object.entries(sp.pending).map(([t, n]) => `${num(n)} ${t}`).join(", ")} still playing)` : ""}</> : spTh ? <>Splash: Thursday reading only, <b>{num(spTh.alive)}</b> alive. The full list has not been entered.</> : <>No Splash numbers entered for this week.</>}</div>}
             <table className="dist">
-              <thead><tr><th>Team</th><th>Entries</th><th>% of field</th><th style={{ textAlign: "left" }}></th>{hasM && <th title={`win^${params.a} · e^(−${params.b}·FV) · availability`}>Model est.</th>}<th>Result</th><th>Eliminated</th></tr></thead>
+              <thead><tr><th>Team</th><th>Entries</th><th>% of field</th><th style={{ textAlign: "left" }}></th>{hasM && <th title={`win^${params.a} · e^(−${params.b}·FV) · availability`}>Model est.</th>}{showSp && (sp || spTh) && <th title="Splash entries on this team and their share of Splash entries alive that week">Splash</th>}<th>Result</th><th>Eliminated</th></tr></thead>
               <tbody>
-                {rows.map(([t, n]) => {
+                {(showSp ? allRows : rows).map(([t, n]) => {
                   const k = st(t);
                   const col = COLORS[t] || ["#c9c6bf", "#1a1a1a"];
                   return (
@@ -2005,6 +2024,7 @@ function Actuals({ data, params, canEdit, onSave }) {
                       <td>{pctOf(n, tot)}</td>
                       <td style={{ textAlign: "left", width: "26%" }}><span className="bar" style={{ width: (100 * n / max) + "%" }} /></td>
                       {hasM && <td style={{ color: "#6f6c66" }}>{fp(mp[t])}</td>}
+                      {showSp && (sp || spTh) && <td className="spc">{spCell(t)}</td>}
                       <td className="res">{k === "W" ? "Won" : k === "L" ? "Lost" : k === "P" ? "Pending" : ""}</td>
                       <td className="elim">{k === "L" ? "−" + num(n) : ""}</td>
                     </tr>
@@ -2015,6 +2035,24 @@ function Actuals({ data, params, canEdit, onSave }) {
           </div>
         );
       })}
+      {showSp && thLeg && (() => {
+        const th = spWeek(thLeg.id).thursday, an = splashAnchor(thLeg.id, data), mp = modelPick(thLeg.id, data, params);
+        const fp = (v) => (v == null ? "–" : v < 0.005 ? "<1%" : (100 * v).toFixed(v < 0.1 ? 1 : 0) + "%");
+        return (
+          <div className="legcard">
+            <div className="hd2"><b>{legLabel(thLeg)}: Splash Thursday reading</b><span className="m"><b>{num(th.alive)}</b> alive on Splash{th.asOf ? ` · read ${fmtTime(th.asOf)}` : ""}</span>{!tl.length && spBtn}</div>
+            <table className="dist">
+              <thead><tr><th>Team</th><th>Splash</th><th>% of Splash</th><th title="Splash share converted to Circa's scale (share^γ ÷ Z)">As Circa</th><th title="The app's estimate of Circa's share after blending the Splash reading with the model">App P%</th><th>Result</th></tr></thead>
+              <tbody>{Object.entries(th.picks).sort((x, y) => y[1] - x[1]).map(([t, n]) => { const col = COLORS[t] || ["#c9c6bf", "#1a1a1a"], f = th.final?.[t]; return (
+                <tr key={t} className={f === "L" ? "L" : f === "W" ? "W" : ""}>
+                  <td><span className="chip" style={{ background: col[0], color: col[1] }}>{t}</span></td>
+                  <td>{num(n)}</td><td>{pctOf(n, th.alive)}</td><td>{fp(an?.shares[t])}</td><td>{fp(mp[t])}</td>
+                  <td className="res">{f === "W" ? "Won" : f === "L" ? "Lost" : ""}</td>
+                </tr>); })}</tbody>
+            </table>
+          </div>
+        );
+      })()}
       {!tl.length && <div className="editor"><h3>No Circa results entered yet.</h3><div className="row">{canEdit ? "Use “Enter Week 1 results” above after Circa posts its selections." : "Check back after the first week locks."}</div></div>}
     </div>
   );
