@@ -70,28 +70,6 @@
     "W17": "BUF",
     "W18": "PHI"
    }
-  },
-  {
-   "id": "mv7a7euf",
-   "name": "10-13 Map",
-   "entry": "CIRCAmcised-2",
-   "picks": {
-    "W6": "LAR",
-    "W7": "NYJ",
-    "W8": "CIN",
-    "W9": "SEA",
-    "W10": "IND",
-    "W11": "DAL",
-    "TG": "DEN",
-    "W12": "JAX",
-    "W13": "PHI",
-    "W14": "BAL",
-    "W15": "GB",
-    "XM": "CHI",
-    "W16": "LV",
-    "W17": "BUF",
-    "W18": "NE"
-   }
   }
  ]
 }
