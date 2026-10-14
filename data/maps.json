@@ -1,30 +1,6 @@
 {
  "maps": [
   {
-   "id": "muoba7ob",
-   "name": "Jeremy's Map",
-   "entry": "CIRCAmcised-2",
-   "picks": {
-    "W4": "MIN",
-    "W5": "HOU",
-    "W6": "NE",
-    "W7": "NYJ",
-    "W8": "CIN",
-    "W9": "CHI",
-    "W10": "IND",
-    "W11": "LAC",
-    "TG": "LAR",
-    "W12": "JAX",
-    "W13": "DEN",
-    "W14": "SEA",
-    "W15": "GB",
-    "XM": "BUF",
-    "W16": "BAL",
-    "W17": "DAL",
-    "W18": "PHI"
-   }
-  },
-  {
    "id": "muvkmiar",
    "name": "Pre-5 Jamie's Map",
    "entry": "CIRCAmcised-2",
@@ -46,6 +22,30 @@
     "W16": "LV",
     "W17": "BUF",
     "W18": "NE"
+   }
+  },
+  {
+   "id": "muoba7ob",
+   "name": "Jeremy's Map",
+   "entry": "CIRCAmcised-2",
+   "picks": {
+    "W4": "MIN",
+    "W5": "HOU",
+    "W6": "NE",
+    "W7": "NYJ",
+    "W8": "CIN",
+    "W9": "CHI",
+    "W10": "IND",
+    "W11": "LAC",
+    "TG": "LAR",
+    "W12": "JAX",
+    "W13": "DEN",
+    "W14": "SEA",
+    "W15": "GB",
+    "XM": "BUF",
+    "W16": "BAL",
+    "W17": "DAL",
+    "W18": "PHI"
    }
   },
   {
