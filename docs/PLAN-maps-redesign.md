@@ -85,6 +85,9 @@ between the two new maps.
 
 ## Status
 
+- 2026-10-14: PULL eased to ×0.9 at every lead beyond next week (was 0.9 / 0.8), after re-measuring with the current
+  ratings method (slope 0.90 on 2026; 2025 with a weaker prior wanted >1). Recheck at Week 9.
+
 - 2026-10-13 (later): steps 4–5 done. Old DILI and 96 maps removed; tabs are Rules, Simulation, Locks (= Rules ∩
   Simulation), customs. The Planner's forfeit is the playouts' (provisional old blend until the worker returns;
   cached in localStorage so reloads are instant). Conservatism: PULL (far-out projections ×0.9/×0.8 toward even,

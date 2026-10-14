@@ -38,11 +38,12 @@ function erf(x) {
   return x < 0 ? -y : y;
 }
 const winFromMargin = (m) => normCdf(m / MARGIN_SD);
-// Projected spreads for games more than a week out run too strong: against closing lines, a projection two or more
-// legs ahead closed at about 0.8 of itself on average (slopes 0.83, 0.77, 0.80 at two, three and four legs out;
-// 0.96 for next week's market lines). PULL shrinks a projection toward even by how far out it is, so a distant
-// favorite is worth a little less to every map, forfeit and playout than its raw rating gap says.
-const PULL = (lead) => (lead <= 1 ? 1 : lead === 2 ? 0.9 : 0.8);
+// Projected spreads for games more than a week out run a little too strong. Rebuilding the current ratings as they
+// stood before each 2026 week and projecting two to seven weeks ahead, favorites closed at about 0.9 of their projected
+// size (0.93, 0.87, 0.88, 0.90 by distance; 226 projections). PULL shrinks a projection toward even by that much, so a
+// distant favorite counts for a little less than its raw rating gap. The right size depends on how much the ratings
+// are already held back by their prior (2025, with a weaker prior, wanted the opposite), so it is rechecked midseason.
+const PULL = (lead) => (lead <= 1 ? 1 : 0.9);
 // spread from this team's perspective (negative = favorite), and win prob, projected from power ratings
 function projected(legId, team, ratings, lead = 1) {
   const g = OPP[legId][team];
