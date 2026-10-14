@@ -976,7 +976,7 @@ const CSS = `
 .csp .ctl .note { font-size:12px; color:var(--ink3); padding-right:6px; }
 .csp .ctl .note.msg { color:var(--ink); }
 .csp .ctl .note.err { color:var(--red); }
-.csp .note .sub { display:block; }
+.csp .note .sub, .csp .strip .fig .k .sub { display:block; }
 .csp .who { font-size:12px; color:var(--ink2); }
 .csp .link { display:inline-block; background:none; border:none; padding:0 4px; font:inherit; font-size:12px; color:var(--ink2); cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
 .csp .link:hover { color:var(--ink); }
@@ -1219,6 +1219,8 @@ const CSS = `
 .csp .maptab tr.hol td:first-child { color:var(--sand-ink); font-weight:600; }
 .csp .maptab tr.dead td { color:var(--red); }
 .csp .maptab tr.open td { color:var(--ink3); }
+.csp .maptab td.bk .bkw { display:inline-grid; grid-template-columns:auto 36px; column-gap:5px; align-items:center; vertical-align:middle; }
+.csp .maptab td.bk .bkw .bn { text-align:left; }
 .csp .maptab tr.mine td.why { color:var(--ink); }
 .csp .maptab tr.mine td:nth-child(2) .chip { box-shadow:0 0 0 2px var(--surface), 0 0 0 3.5px var(--ink2); }
 .csp .strip .k { font-size:12px; color:var(--ink2); margin-top:3px; }
@@ -2086,8 +2088,8 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
                   <td><span className="pc">{r.team ? teamChip(r.team) : "–"}</span></td>
                   <td>{r.team ? gameText(l.id, r.team, data) : ""}</td>
                   <td className={r.win != null && r.win < 0.6 ? "weak" : ""}>{pct0(r.win)}</td>
-                  <td className="bk dm">{d?.team ? <>{teamChip(d.team, true)} <span className="mut">{pct0(d.win)}</span></> : "–"}</td>
-                  <td className="bk cm">{c?.team ? <>{teamChip(c.team, true)} <span className="mut">{pct0(c.win)}</span></> : "–"}</td>
+                  <td className="bk dm">{d?.team ? <span className="bkw">{teamChip(d.team, true)}<span className="bn mut">{pct0(d.win)}</span></span> : "–"}</td>
+                  <td className="bk cm">{c?.team ? <span className="bkw">{teamChip(c.team, true)}<span className="bn mut">{pct0(c.win)}</span></span> : "–"}</td>
                   <td className="why" title={note}>{note}</td>
                 </tr>
               );
@@ -2122,7 +2124,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
                 <td>{p.team ? gameText(l.id, p.team, data) : ""}</td>
                 <td className={p.win != null && p.win < 0.6 ? "weak" : ""}>{pct0(p.win)}</td>
                 <td>{tab === "sim" && p.planned ? (p.team ? pct0(p.held) : "") : (p.dili != null ? p.dili.toFixed(2) : "")}</td>
-                <td className="bk">{p.backup ? <>{teamChip(p.backup, true)} {tab === "sim" && p.planned ? pct0(p.backupHeld) : p.backupDili != null ? p.backupDili.toFixed(2) : pct0(p.backupWin)}</> : "–"}</td>
+                <td className="bk">{p.backup ? <span className="bkw">{teamChip(p.backup, true)}<span className="bn">{tab === "sim" && p.planned ? pct0(p.backupHeld) : p.backupDili != null ? p.backupDili.toFixed(2) : pct0(p.backupWin)}</span></span> : "–"}</td>
                 <td className="why" title={why}>{why}</td>
               </tr>
             );
