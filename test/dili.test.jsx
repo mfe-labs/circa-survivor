@@ -115,9 +115,12 @@ ok("future value on a readable scale", fvFor("W2", "KC", data) < 18 && fvFor("W2
   ok("empty weeks make the map incomplete, not wrong", gap.conflicts === 0 && gap.winOut === null && /no pick/.test(gap.winNote));
 })();
 
+// the real entry as of its locked weeks only: whatever has been entered for open weeks is left out, so these tests
+// do not change meaning when picks are entered in the app
+const lockedOnly = (en) => ({ ...en, picks: Object.fromEntries(Object.entries(en.picks).filter(([id]) => actuals.legs[id])) });
 // the two Claude maps on real data, and the played-Thursday block
 (() => {
-  const real = buildData({ picks, actuals, odds, ratings, splash }), params = fitParams(real), e = picks.entries[0];
+  const real = buildData({ picks, actuals, odds, ratings, splash }), params = fitParams(real), e = lockedOnly(picks.entries[0]);
   const tab = seasonTable(real, params), spent = spentTeams(real, e.picks);
   const rp = rulesPlan(real, e.picks, params), sp = simPlan(real, e.picks, params);
   const idx = (t) => ALL_TEAMS.indexOf(t);
@@ -142,7 +145,7 @@ ok("future value on a readable scale", fvFor("W2", "KC", data) < 18 && fvFor("W2
 
 // the Rule map: hold three Christmas teams until Thanksgiving is played
 (() => {
-  const real = buildData({ picks, actuals, odds, ratings, splash }), params = fitParams(real), e = picks.entries[0];
+  const real = buildData({ picks, actuals, odds, ratings, splash }), params = fitParams(real), e = lockedOnly(picks.entries[0]);
   const rp = rulesPlan(real, e.picks, params), spent = spentTeams(real, e.picks);
   const xm = LEGS.findIndex((l) => l.id === "XM"), K = (id) => LEGS.findIndex((l) => l.id === id);
   ok("rule is active before Thanksgiving and holds three Christmas teams", rp.active && rp.hold === 3 && rp.held.length === 3 && rp.held.every((t) => XM_TEAMS.has(t) && !spent.has(t)), rp.held.join(", "));
@@ -170,7 +173,7 @@ ok("future value on a readable scale", fvFor("W2", "KC", data) < 18 && fvFor("W2
 
 // the Simulation map on real data: sane forfeits, a full plan, and a fair comparison with the current forfeit
 (() => {
-  const real = buildData({ picks, actuals, odds, ratings, splash }), params = fitParams(real), e = picks.entries[0], spent = spentTeams(real, e.picks);
+  const real = buildData({ picks, actuals, odds, ratings, splash }), params = fitParams(real), e = lockedOnly(picks.entries[0]), spent = spentTeams(real, e.picks);
   const t0 = Date.now(); const sp = simPlan(real, e.picks, params); const ms = Date.now() - t0;
   ok("Simulation map finishes in a sane time (a worker runs it in the page; CI runners are slow)", ms < 20000, `${ms} ms`);
   ok("Simulation map fills every open week with distinct, unspent teams", sp.plan.length > 0 && sp.plan.every((q) => q.team) && new Set(sp.plan.map((q) => q.team)).size === sp.plan.length && sp.plan.every((q) => !spent.has(q.team)), sp.plan.map((q) => `${q.leg.id} ${q.team} ${Math.round(100 * q.held)}%`).join(" "));
@@ -187,7 +190,7 @@ ok("future value on a readable scale", fvFor("W2", "KC", data) < 18 && fvFor("W2
 
 // picks the entry has entered for open weeks are taken as given by both Claude maps
 (() => {
-  const real = buildData({ picks, actuals, odds, ratings, splash }), params = fitParams(real), e = picks.entries[0];
+  const real = buildData({ picks, actuals, odds, ratings, splash }), params = fitParams(real), e = lockedOnly(picks.entries[0]);
   const tab = seasonTable(real, params), now = LEGS[tab.nowIdx].id, spent = spentTeams(real, e.picks);
   const base = rulesPlan(real, e.picks, params), baseSim = simPlan(real, e.picks, params);
   // enter a current-week pick that is not Claude's, plus two later ones
