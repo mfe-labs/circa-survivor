@@ -1,5 +1,5 @@
 // Field timeline + popularity model on the real data files.
-import { buildData, fieldTimeline, modelPick, modelPickRange, fitParams, availability, fvAt, splashAnchor, computeEV, capShares, projectField } from "../src/CircaSurvivorPlanner.jsx";
+import { buildData, fieldTimeline, modelPick, modelPickRange, fitParams, availability, fvAt, splashAnchor, computeEV, capShares, projectField, lineFor, spotWeight } from "../src/CircaSurvivorPlanner.jsx";
 import { OPP, LEGS } from "../src/schedule.js";
 import picks from "../data/picks.json";
 import actuals from "../data/actuals.json";
@@ -101,5 +101,13 @@ ok("no actuals → prior", (() => { const p = fitParams({ ...data, actuals: {} }
   ok("projected weeks never give a team more than its availability", Object.keys(pf).length > 0 && over.length === 0, over.join(", ") || `${Object.keys(pf).length} weeks checked`);
   const mp = first ? modelPick(first.id, data, pr, true) : {}, av1 = first ? availability(first.id, data) : {};
   ok("this week's estimate stays under availability too", Object.entries(mp).every(([tm, x]) => x <= (av1[tm] ?? 1) + 1e-6));
+})();
+// future value counts strong weeks on full-size lines (what the field sees), while plans use the pulled ones
+(() => {
+  const open = LEGS.find((l) => !actuals.legs[l.id]); if (!open) return;
+  const far = LEGS.slice(LEGS.indexOf(open) + 3).find((l) => OPP[l.id].BUF), t = "BUF";
+  if (far) ok("a far-out projection is pulled toward even, the raw one is not", Math.abs(lineFor(far.id, t, data).spread) <= Math.abs(lineFor(far.id, t, data, true).spread) + 1e-9, `${far.id} ${t}: pulled ${lineFor(far.id, t, data).spread} vs raw ${lineFor(far.id, t, data, true).spread}`);
+  const raw = LEGS.slice(LEGS.indexOf(open) + 1).reduce((v, l) => { const ln = lineFor(l.id, t, data, true); return v + (ln && ln.win != null ? spotWeight(ln.win) : 0); }, 0);
+  ok("future value uses the full-size lines", Math.abs(fvAt(open.id, t, data) - raw) < 1e-9, `${t} ${open.id}: ${fvAt(open.id, t, data).toFixed(2)}`);
 })();
 if (fails) { console.log(`${fails} FAILED`); process.exit(1); }

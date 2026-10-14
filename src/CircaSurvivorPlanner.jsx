@@ -175,10 +175,12 @@ function buildData({ picks, actuals, odds, ratings, splash = null }, withPrev = 
 }
 // lineFor: any line for display / future-value projection. Live market line if captured, else a projection
 // from power ratings (proj: true). NEVER use this for the selected leg's True Win % — use marketLine().
-function lineFor(legId, team, data) {
+// raw: the projection at full size, as the field sees it on sites like SurvivorGrid (used for future value, which
+// describes what the crowd is looking at); otherwise far-out projections carry PULL
+function lineFor(legId, team, data, raw = false) {
   const live = data?.legs?.[legId]?.lines?.[team];
   if (live) return { ...live, proj: false };
-  return projected(legId, team, data?.ratings, LEGS.findIndex((l) => l.id === legId) - lockedIdx(data) + 1);
+  return projected(legId, team, data?.ratings, raw ? 1 : LEGS.findIndex((l) => l.id === legId) - lockedIdx(data) + 1);
 }
 function marketLine(legId, team, data) {
   const ln = data?.legs?.[legId]?.lines?.[team];
@@ -253,7 +255,8 @@ function fvFor(legId, team, data) {
   return cached(data, "fv", legId + "|" + team, () => {
     const idx = LEGS.findIndex((l) => l.id === legId);
     let fv = 0;
-    for (const l of LEGS.slice(idx + 1)) { const ln = lineFor(l.id, team, data); if (ln && ln.win != null) fv += spotWeight(ln.win); }
+    // full-size lines: future value is what the field sees ahead, and the crowd model was fit on values frozen that way
+    for (const l of LEGS.slice(idx + 1)) { const ln = lineFor(l.id, team, data, true); if (ln && ln.win != null) fv += spotWeight(ln.win); }
     return data?.ratings ? fv : 0;
   });
 }
@@ -951,7 +954,7 @@ export function entryStatus(entry, actualLegs) {
   return { alive: true, leg: null };
 }
 
-export { seasonTable, mapLegs, expWin, survivalPath, capShares, projectField, lineFor, modelPickRange, fvAt, bandError, strengthWeight, futureFor, marketLine, splashAnchor, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
+export { spotWeight, seasonTable, mapLegs, expWin, survivalPath, capShares, projectField, lineFor, modelPickRange, fvAt, bandError, strengthWeight, futureFor, marketLine, splashAnchor, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
 
 const CSS = `
 /* ---- tokens: paper, ink, one green ---- */

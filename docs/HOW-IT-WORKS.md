@@ -44,7 +44,8 @@ each with its own pick. Each team once per entry. Tie = loss. Schedule is hard-c
   Ratings project spreads for every future cell (italic) and drive the Future column; spread → win chance is
   Φ(spread ÷ 11.5), calibrated to closing moneylines (`MARGIN_SD`). Projections are pulled toward even by lead
   (`PULL`: ×0.9 two or more legs out; slope of close on projection 0.90 over 226 2026 projections with the
-  current ratings method; 2025 with a weaker prior had 1.17, so recheck midseason), via `lineFor`'s lead from lockedIdx.
+  current ratings method; 2025 with a weaker prior had 1.17, so recheck midseason), via `lineFor`'s lead from lockedIdx. Future value (`fvFor`, the crowd model's input and the Future
+  column) reads `lineFor(..., raw = true)`: full-size lines, what the field sees, matching the frozen training values.
 - **Picks** (`picks.json`) are written by the app when the owner is signed in. After a week locks they are also
   confirmed against Circa's file (below), which is the source of truth.
 - **Circa actuals** (`actuals.json`): a GitHub Action runs every 3 hours from Thursday to Monday. Circa posts a text
