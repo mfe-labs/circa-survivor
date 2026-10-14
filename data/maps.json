@@ -25,6 +25,29 @@
    }
   },
   {
+   "id": "muztdbty",
+   "name": "Pre-6 Jamie's Map",
+   "entry": "CIRCAmcised-2",
+   "picks": {
+    "W5": "HOU",
+    "W7": "NYJ",
+    "W8": "CIN",
+    "TG": "LAR",
+    "W12": "JAX",
+    "W13": "DEN",
+    "W15": "GB",
+    "W10": "IND",
+    "W11": "DAL",
+    "W6": "NE",
+    "W9": "SEA",
+    "W14": "BAL",
+    "XM": "CHI",
+    "W16": "LV",
+    "W17": "BUF",
+    "W18": "PHI"
+   }
+  },
+  {
    "id": "muvkmiar",
    "name": "Pre-5 Jamie's Map",
    "entry": "CIRCAmcised-2",
@@ -46,29 +69,6 @@
     "W16": "LV",
     "W17": "BUF",
     "W18": "NE"
-   }
-  },
-  {
-   "id": "muztdbty",
-   "name": "Pre-6 Jamie's Map",
-   "entry": "CIRCAmcised-2",
-   "picks": {
-    "W5": "HOU",
-    "W7": "NYJ",
-    "W8": "CIN",
-    "TG": "LAR",
-    "W12": "JAX",
-    "W13": "DEN",
-    "W15": "GB",
-    "W10": "IND",
-    "W11": "DAL",
-    "W6": "NE",
-    "W9": "SEA",
-    "W14": "BAL",
-    "XM": "CHI",
-    "W16": "LV",
-    "W17": "BUF",
-    "W18": "PHI"
    }
   }
  ]
