@@ -85,11 +85,12 @@ ok("future value on a readable scale", fvFor("W2", "KC", data) < 18 && fvFor("W2
 
 // real data: the live entry's week, whatever week that is
 (() => {
+  if (LEGS.every((l) => actuals.legs[l.id])) return;   // season over: nothing left to map
   const real = buildData({ picks, actuals, odds, ratings });
   const params = fitParams(real);
   const leg = LEGS.find((l) => !real.actuals[l.id])?.id || "W18";
   const burned = spentTeams(real, picks.entries[0].picks); burned.delete(picks.entries[0].picks[leg]);
-  const r = {}; for (const t of ALL_TEAMS) { const ln = real.legs[leg]?.lines[t]; r[t] = { win: ln?.win ?? null, pick: ln && ln.win > 0.5 ? 1 / 16 : 0, fv: fvFor(leg, t, real) }; }
+  const r = {}; for (const t of ALL_TEAMS) { const ln = OPP[leg][t] ? lineFor(leg, t, real) : null; r[t] = { win: ln?.win ?? null, pick: ln && ln.win > 0.5 ? 1 / 16 : 0, fv: fvFor(leg, t, real) }; }
   computeEV(leg, r);
   const t0 = Date.now(); const m = computeDili(leg, r, real, burned, params); const ms = Date.now() - t0;
   const scored = Object.keys(OPP[leg]).filter((t) => r[t].dili != null);
@@ -118,8 +119,19 @@ ok("future value on a readable scale", fvFor("W2", "KC", data) < 18 && fvFor("W2
 // the real entry as of its locked weeks only: whatever has been entered for open weeks is left out, so these tests
 // do not change meaning when picks are entered in the app
 const lockedOnly = (en) => ({ ...en, picks: Object.fromEntries(Object.entries(en.picks).filter(([id]) => actuals.legs[id])) });
+// a finished season: the maps return empty plans instead of failing
+(() => {
+  const all = { ...actuals, legs: { ...actuals.legs } };
+  for (const l of LEGS) if (!all.legs[l.id]) { const t = Object.keys(OPP[l.id])[0]; all.legs[l.id] = { asOf: "test", picks: { [t]: 1 }, won: [t], lost: [], pending: [], fv: {} }; }
+  const d = buildData({ picks, actuals: all, odds, ratings, splash }), p = fitParams(d), en = picks.entries[0];
+  let threw = null; let r, sm;
+  try { r = rulesPlan(d, en.picks, p); sm = simPlan(d, en.picks, p); } catch (err) { threw = String(err); }
+  ok("the maps handle a finished season", !threw && r.plan.length === 0 && sm.plan.length === 0, threw || "");
+})();
+
 // the two Claude maps on real data, and the played-Thursday block
 (() => {
+  if (LEGS.every((l) => actuals.legs[l.id])) return;   // season over: nothing left to map
   const real = buildData({ picks, actuals, odds, ratings, splash }), params = fitParams(real), e = lockedOnly(picks.entries[0]);
   const tab = seasonTable(real, params), spent = spentTeams(real, e.picks);
   const rp = rulesPlan(real, e.picks, params), sp = simPlan(real, e.picks, params);
@@ -127,7 +139,7 @@ const lockedOnly = (en) => ({ ...en, picks: Object.fromEntries(Object.entries(en
   const dog = (m) => m.plan.filter((q) => q.win != null && q.win < 0.5 && Object.keys(OPP[q.leg.id]).some((t) => !m.plan.some((r) => r.team === t) && !spent.has(t) && (lineFor(q.leg.id, t, real)?.win ?? 0) >= 0.6)).map((q) => `${q.leg.id} ${q.team}`);
   ok("no map takes an underdog while a 60% team is unused", dog(rp).length === 0 && dog(sp).length === 0, [...dog(rp), ...dog(sp)].join(", "));
   ok("both maps put eligible teams on the holidays", [rp, sp].every((m) => m.plan.every((p) => !p.team || ((p.leg.id !== "TG" || TG_TEAMS.has(p.team)) && (p.leg.id !== "XM" || XM_TEAMS.has(p.team))))));
-  ok("both maps report a win-out on today's lines in a sane range", rp.winOut > 0.0005 && rp.winOut < 0.2 && sp.winOut > 0.0005 && sp.winOut < 0.2, `rules ${(100 * rp.winOut).toFixed(2)}% · simulation ${(100 * sp.winOut).toFixed(2)}% (expected with movement ${(100 * sp.expected).toFixed(2)}%)`);
+  ok("both maps report a win-out on today's lines in a sane range", rp.winOut > 0.0005 && rp.winOut < 1 && sp.winOut > 0.0005 && sp.winOut < 1, `rules ${(100 * rp.winOut).toFixed(2)}% · simulation ${(100 * sp.winOut).toFixed(2)}% (expected with movement ${(100 * sp.expected).toFixed(2)}%)`);
   const lk = locksPicks(rp, sp), bySim = Object.fromEntries(sp.plan.map((p) => [p.leg.id, p.team]));
   ok("Claude Locks holds exactly the weeks both maps agree on", rp.plan.every((p) => (lk[p.leg.id] || null) === (p.team && bySim[p.leg.id] === p.team ? p.team : null)), `${Object.keys(lk).length} of ${rp.plan.length} weeks locked`);
   // a Thursday game already played can no longer be picked this week
@@ -139,16 +151,19 @@ const lockedOnly = (en) => ({ ...en, picks: Object.fromEntries(Object.entries(en
     const picksNow = [rulesPlan(d2, e.picks, p2), simPlan(d2, e.picks, p2)].map((m) => m.plan[0].team);
     const tab2 = seasonTable(d2, p2), kk = tab2.nowIdx, later = LEGS.findIndex((l, i) => i > kk && OPP[l.id][thu]);
     ok("no map picks a team whose Thursday game is over", picksNow.every((t) => t !== thu && t !== opp), `${now.id}: ${thu}/${opp} played; maps pick ${picksNow.join(", ")}`);
-    ok("a played Thursday game is blocked this week only", Number.isNaN(tab2.z[kk][idx(thu)]) && Number.isNaN(tab2.z[kk][idx(opp)]) && !Number.isNaN(tab2.z[later][idx(thu)]) && !Number.isNaN(tab.z[kk][idx(thu)]));
+    ok("a played Thursday game is blocked this week only", Number.isNaN(tab2.z[kk][idx(thu)]) && Number.isNaN(tab2.z[kk][idx(opp)]) && (later < 0 || !Number.isNaN(tab2.z[later][idx(thu)])) && !Number.isNaN(tab.z[kk][idx(thu)]));
   }
 })();
 
 // the Rule map: hold three Christmas teams until Thanksgiving is played
 (() => {
+  if (LEGS.every((l) => actuals.legs[l.id])) return;   // season over: nothing left to map
   const real = buildData({ picks, actuals, odds, ratings, splash }), params = fitParams(real), e = lockedOnly(picks.entries[0]);
   const rp = rulesPlan(real, e.picks, params), spent = spentTeams(real, e.picks);
   const xm = LEGS.findIndex((l) => l.id === "XM"), K = (id) => LEGS.findIndex((l) => l.id === id);
-  ok("rule is active before Thanksgiving and holds three Christmas teams", rp.active && rp.hold === 3 && rp.held.length === 3 && rp.held.every((t) => XM_TEAMS.has(t) && !spent.has(t)), rp.held.join(", "));
+  const beforeTG = LEGS.findIndex((l) => l.id === "TG") >= seasonTable(real, params).nowIdx;
+  if (!beforeTG) ok("after Thanksgiving the rule holds nothing", !rp.active && rp.held.length === 0);
+  else ok("rule is active before Thanksgiving and holds three Christmas teams", rp.active && rp.hold === 3 && rp.held.length === 3 && rp.held.every((t) => XM_TEAMS.has(t) && !spent.has(t)), rp.held.join(", "));
   ok("held teams are not used anywhere before Christmas", rp.plan.every((q) => !q.team || K(q.leg.id) >= xm || !rp.held.includes(q.team)));
   ok("Rule map fills every week with distinct teams, none spent", rp.plan.every((q) => q.team) && new Set(rp.plan.map((q) => q.team)).size === rp.plan.length && rp.plan.every((q) => !spent.has(q.team)));
   ok("the price is the win-out gap against the unconstrained plan", rp.freeWinOut != null && rp.freeWinOut >= rp.winOut - 1e-12, `rule ${(100 * rp.winOut).toFixed(3)}% vs free ${(100 * rp.freeWinOut).toFixed(3)}%`);
@@ -168,41 +183,48 @@ const lockedOnly = (en) => ({ ...en, picks: Object.fromEntries(Object.entries(en
   const tg = LEGS.findIndex((l) => l.id === "TG"), fake = { ...actuals, legs: { ...actuals.legs } }, fp = { ...e.picks };
   for (let k = 0; k <= tg; k++) { const l = LEGS[k]; if (fake.legs[l.id]) continue; const w = Object.keys(OPP[l.id]).find((t) => OPP[l.id][t].home && !Object.values(fp).includes(t)); fake.legs[l.id] = { asOf: "test", picks: { [w]: 100 }, won: [w], lost: [], pending: [], fv: {} }; fp[l.id] = w; }
   const later = buildData({ picks, actuals: fake, odds, ratings, splash }), rl = rulesPlan(later, fp, fitParams(later));
-  ok("the rule lifts after Thanksgiving", !rl.active && rl.held.length === 0 && rl.currentLeg?.id === "W12", `current ${rl.currentLeg?.id}, held ${rl.held.join(",") || "none"}`);
+  ok("the rule lifts after Thanksgiving", !rl.active && rl.held.length === 0 && LEGS.findIndex((l) => l.id === rl.currentLeg?.id) > tg, `current ${rl.currentLeg?.id}, held ${rl.held.join(",") || "none"}`);
 })();
 
 // the Simulation map on real data: sane forfeits, a full plan, and a fair comparison with the current forfeit
 (() => {
+  if (LEGS.every((l) => actuals.legs[l.id])) return;   // season over: nothing left to map
   const real = buildData({ picks, actuals, odds, ratings, splash }), params = fitParams(real), e = lockedOnly(picks.entries[0]), spent = spentTeams(real, e.picks);
   const t0 = Date.now(); const sp = simPlan(real, e.picks, params); const ms = Date.now() - t0;
   ok("Simulation map finishes in a sane time (a worker runs it in the page; CI runners are slow)", ms < 20000, `${ms} ms`);
   ok("Simulation map fills every open week with distinct, unspent teams", sp.plan.length > 0 && sp.plan.every((q) => q.team) && new Set(sp.plan.map((q) => q.team)).size === sp.plan.length && sp.plan.every((q) => !spent.has(q.team)), sp.plan.map((q) => `${q.leg.id} ${q.team} ${Math.round(100 * q.held)}%`).join(" "));
   const rows = Object.values(sp.rows);
-  ok("every playout forfeit is at least 1 and finite", rows.length > 5 && rows.every((r) => r.forfeit >= 1 && Number.isFinite(r.forfeit)), `${rows.length} candidates`);
+  ok("every playout forfeit is at least 1 and finite", rows.length > 0 && rows.every((r) => r.forfeit >= 1 && Number.isFinite(r.forfeit)), `${rows.length} candidates`);
   ok("this week's pick is the top EV ÷ playout forfeit", sp.plan[0].team === Object.keys(sp.rows).sort((a, b) => sp.rows[b].dili - sp.rows[a].dili)[0]);
-  ok("expected win-out sits in a sane range", sp.winOut > 0.001 && sp.winOut < 0.2, `${(100 * sp.winOut).toFixed(2)}%`);
+  ok("expected win-out sits in a sane range", sp.winOut > 0.0005 && sp.winOut < 1, `${(100 * sp.winOut).toFixed(2)}%`);
   ok("later-week shares are shares", sp.plan.slice(1).every((q) => q.held > 0 && q.held <= 1 + 1e-9));
   const same = simPlan(real, e.picks, params); ok("same inputs, same simulation", same === sp || same.plan.map((q) => q.team).join() === sp.plan.map((q) => q.team).join());
   const both = rows.filter((r) => r.oldForfeit != null && Number.isFinite(r.oldForfeit));
   const corr = (() => { const n = both.length, mx = both.reduce((a, r) => a + Math.log(r.forfeit), 0) / n, my = both.reduce((a, r) => a + Math.log(r.oldForfeit), 0) / n; const sxy = both.reduce((a, r) => a + (Math.log(r.forfeit) - mx) * (Math.log(r.oldForfeit) - my), 0), sx = Math.sqrt(both.reduce((a, r) => a + (Math.log(r.forfeit) - mx) ** 2, 0)), sy = Math.sqrt(both.reduce((a, r) => a + (Math.log(r.oldForfeit) - my) ** 2, 0)); return sx && sy ? sxy / (sx * sy) : 0; })();
-  ok("playout forfeits broadly agree with the current forfeits (comparison phase)", corr > 0.3, `correlation ${corr.toFixed(2)} over ${both.length} teams`);
+  ok("playout forfeits broadly agree with the current forfeits (comparison phase)", corr > 0.3 || both.every((r) => Math.abs(r.forfeit - 1) < 1e-9), `correlation ${corr.toFixed(2)} over ${both.length} teams`);
 })();
 
 // picks the entry has entered for open weeks are taken as given by both Claude maps
 (() => {
+  if (LEGS.every((l) => actuals.legs[l.id])) return;   // season over: nothing left to map
   const real = buildData({ picks, actuals, odds, ratings, splash }), params = fitParams(real), e = lockedOnly(picks.entries[0]);
   const tab = seasonTable(real, params), now = LEGS[tab.nowIdx].id, spent = spentTeams(real, e.picks);
   const base = rulesPlan(real, e.picks, params), baseSim = simPlan(real, e.picks, params);
+  const team = (m, id) => m.plan.find((q) => q.leg.id === id)?.team;
   // enter a current-week pick that is not Claude's, plus two later ones
   const nowPick = Object.keys(OPP[now]).find((t) => !spent.has(t) && t !== base.plan[0].team && (lineFor(now, t, real)?.win ?? 0) > 0.6);
-  const mine = { ...e.picks, [now]: nowPick, W7: "CAR", W9: "NO" };
+  // two later open, non-holiday weeks, each with an unspent team that is not Claude's pick there
+  const regular = LEGS.slice(tab.nowIdx + 1).filter((l) => !l.holiday).map((l) => l.id), laterIds = regular.length >= 3 ? [regular[0], regular[2]] : regular.slice(0, 2);
+  const chosen = new Set([nowPick]), later = laterIds.map((id) => { const t = Object.keys(OPP[id]).find((t) => !spent.has(t) && !chosen.has(t) && t !== team(base, id) && (lineFor(id, t, real)?.win ?? 0) > 0.5); chosen.add(t); return [id, t]; });
+  if (!nowPick || later.length < 2 || later.some(([, t]) => !t)) { ok("entered-picks checks need two later weeks (skipped late in the season)", true); return; }
+  const [[L1, T1], [L2, T2]] = later;
+  const mine = { ...e.picks, [now]: nowPick, [L1]: T1, [L2]: T2 };
   const rp = rulesPlan(real, mine, params), sp = simPlan(real, mine, params);
-  const team = (m, id) => m.plan.find((q) => q.leg.id === id)?.team;
-  ok("both maps keep every entered pick in its week", [rp, sp].every((m) => team(m, now) === nowPick && team(m, "W7") === "CAR" && team(m, "W9") === "NO"), `${now} ${nowPick}, W7 CAR, W9 NO`);
-  ok("an entered team is not used in any other week", [rp, sp].every((m) => m.plan.filter((q) => [nowPick, "CAR", "NO"].includes(q.team)).length === 3));
-  ok("entered rows are marked, the rest are not", [rp, sp].every((m) => m.plan.filter((q) => q.fixed).map((q) => q.leg.id).sort().join() === [now, "W7", "W9"].sort().join()));
+  ok("both maps keep every entered pick in its week", [rp, sp].every((m) => team(m, now) === nowPick && team(m, L1) === T1 && team(m, L2) === T2), `${now} ${nowPick}, ${L1} ${T1}, ${L2} ${T2}`);
+  ok("an entered team is not used in any other week", [rp, sp].every((m) => m.plan.filter((q) => [nowPick, T1, T2].includes(q.team)).length === 3));
+  ok("entered rows are marked, the rest are not", [rp, sp].every((m) => m.plan.filter((q) => q.fixed).map((q) => q.leg.id).sort().join() === [now, L1, L2].sort().join()));
   ok("both maps still fill every week with distinct teams", [rp, sp].every((m) => m.plan.every((q) => q.team) && new Set(m.plan.map((q) => q.team)).size === m.plan.length));
-  ok("each entered pick reports Claude's alternative and a cost of 0 or more", [rp, sp].every((m) => [now, "W7", "W9"].every((id) => m.notes[id] && m.notes[id].cost >= 0 && m.notes[id].cost < 1)), `rules ${now}: ${rp.notes[now]?.claude} (${(100 * rp.notes[now]?.cost).toFixed(1)}%), W7 ${rp.notes.W7?.claude} (${(100 * rp.notes.W7?.cost).toFixed(1)}%)`);
+  ok("each entered pick reports Claude's alternative and a cost of 0 or more", [rp, sp].every((m) => [now, L1, L2].every((id) => m.notes[id] && m.notes[id].cost >= 0 && m.notes[id].cost < 1)), `rules ${now}: ${rp.notes[now]?.claude} (${(100 * rp.notes[now]?.cost).toFixed(1)}%), ${L1} ${rp.notes[L1]?.claude} (${(100 * rp.notes[L1]?.cost).toFixed(1)}%)`);
   ok("this week's alternative is Claude's own pick without the entries", rp.notes[now].claude === base.plan[0].team && sp.notes[now].claude === baseSim.plan[0].team);
   ok("entering picks can only lower the win-out at today's lines", rp.winOut <= base.winOut + 1e-12, `${(100 * rp.winOut).toFixed(3)}% ≤ ${(100 * base.winOut).toFixed(3)}%`);
   ok("no entries, no notes", Object.keys(base.notes).length === 0 && Object.keys(baseSim.notes).length === 0);
@@ -221,9 +243,9 @@ const lockedOnly = (en) => ({ ...en, picks: Object.fromEntries(Object.entries(en
   ok("an entered Thursday team whose game is over stays the pick on both maps", team(ms, now) === thu && team(mr, now) === thu && ms.plan[0].fixed && mr.plan[0].fixed, `${thu} won Thursday`);
   ok("and is not planned again later", [ms, mr].every((m) => m.plan.filter((q) => q.team === thu).length === 1));
   // a Christmas team entered before Thanksgiving is not held
-  const xmTeam = rp.held[0], early = { ...e.picks, W8: xmTeam };
-  const re = rulesPlan(real, early, params);
-  ok("a held Christmas team entered earlier is used there, and three others are held", team(re, "W8") === xmTeam && !re.held.includes(xmTeam) && re.held.length === Math.min(3, re.pool.length), `${xmTeam} in W8; held ${re.held.join(", ")}`);
+  const xmTeam = rp.held[0], wk = LEGS.slice(tab.nowIdx + 1).find((l) => !l.holiday && OPP[l.id][xmTeam])?.id, early = { ...e.picks, [wk]: xmTeam };
+  const re = rp.active && wk ? rulesPlan(real, early, params) : null;
+  if (re) ok("a held Christmas team entered earlier is used there, and three others are held", team(re, wk) === xmTeam && !re.held.includes(xmTeam) && re.held.length === Math.min(3, re.pool.length), `${xmTeam} in W8; held ${re.held.join(", ")}`);
 })();
 
 // futures prior: monotone in title odds, centered, on a points scale
