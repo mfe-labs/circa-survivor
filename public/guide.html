@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><style>html{background:#FBFAF7;overscroll-behavior-x:none}</style>
+<meta charset="utf-8"><style>html{background:#FBFAF7;overscroll-behavior-x:none}</style><script>try{if(localStorage.getItem("csp-theme")==="dark")document.documentElement.dataset.theme="dark"}catch(e){}</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>How the Circa Survivor planner works</title>
 <meta name="description" content="A plain-English walkthrough of every number on the Circa Survivor 2026 planner.">
@@ -13,7 +13,9 @@
   --paper:#FBFAF7; --panel:#F4F2EC; --surface:#FFFFFF; --ink:#17181C; --ink2:#5B5E66; --ink3:#9A9DA6;
   --rule:#E7E5DF; --rule2:#D6D3CB; --green:#2F8F3E; --green-ink:#1C5E2A; --green-bg:#EDF7EC;
   --sel:#2F63C9; --sel-line:#9DB8E6; --sel-bg:#EAF0FA; --amber:#C98A1A; --red:#D64545; --sand:#F3EFE3;
-}
+;--sand-ink:#7A5A12}
+html[data-theme=dark]{background:#141412;color-scheme:dark;--paper:#141412;--panel:#1C1C19;--surface:#22221F;--ink:#ECEAE4;--ink2:#AAA79F;--ink3:#78766F;--rule:#2D2C28;--rule2:#3B3A35;--green:#5DBB6E;--green-ink:#93D59E;--green-bg:#1D3323;--sel:#7AA2F0;--sel-line:#3D5A8F;--sel-bg:#1A2231;--amber:#E2A740;--red:#EF6F6F;--sand:#28241A;--sand-ink:#D8B56B;--green-soft:#2A4A31;--green-tint:rgba(93,187,110,.18)}
+
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--paper);color:var(--ink);
@@ -58,7 +60,7 @@ nav.toc a:hover{border-color:var(--ink)}
 .formula .cap{display:block;font-size:13px;color:var(--ink2);margin-top:9px;line-height:1.5}
 code{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-size:14px;background:var(--panel);
   padding:1px 5px;border-radius:4px}
-.example{background:var(--green-bg);border:1px solid #CDE6CC;border-radius:12px;padding:18px 20px;margin:0 0 20px}
+.example{background:var(--green-bg);border:1px solid var(--green-soft, #CDE6CC);border-radius:12px;padding:18px 20px;margin:0 0 20px}
 .example h4{margin:0 0 10px;font-size:13px;font-weight:600;color:var(--green-ink);letter-spacing:.02em}
 .example p{margin:0 0 10px}
 .example p:last-child{margin-bottom:0}
@@ -83,16 +85,16 @@ tbody tr:last-child td{border-bottom:none}
 .key li{display:flex;gap:12px;align-items:baseline;margin:0 0 10px}
 .key .sw{flex:0 0 96px;text-align:center;font-size:13px;font-weight:600;padding:3px 0;border-radius:5px;
   border:1px solid transparent;font-variant-numeric:tabular-nums}
-.sw.pick{background:#DDF3DC;color:var(--green-ink)}
+.sw.pick{background:var(--green-bg);color:var(--green-ink)}
 .sw.burn{color:var(--ink3);text-decoration:line-through}
-.sw.fav{background:rgba(47,143,62,.16)}
+.sw.fav{background:var(--green-tint, rgba(47,143,62,.16))}
 .sw.proj{color:var(--ink3);font-style:italic;font-weight:400}
 .sw.hi{color:var(--green-ink)}
 .sw.warnc{color:var(--red)}
 .sw.selc{background:var(--sel-bg);border-color:var(--sel-line);color:var(--sel)}
 .sw.plain{border-color:var(--rule2);background:var(--surface)}
 .dot{display:inline-block;width:7px;height:7px;border-radius:50%;vertical-align:1px}
-.dot.tg{background:#7A5A12;opacity:.75} .dot.xm{background:var(--red)} .dot.am{background:var(--amber)}
+.dot.tg{background:var(--sand-ink, #7A5A12);opacity:.75} .dot.xm{background:var(--red)} .dot.am{background:var(--amber)}
 
 figure{margin:24px 0 28px}
 figure svg{display:block;width:100%;height:auto}
@@ -156,54 +158,54 @@ footer{border-top:1px solid var(--rule);margin-top:64px;padding-top:24px;font-si
 <svg viewBox="0 0 720 352" role="img" aria-label="Diagram: sportsbook moneylines feed W%, Circa's posted picks feed P%, market spreads and Super Bowl futures feed Future; W% and P% combine into EV; EV and Future combine into DILI.">
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0 0 L10 5 L0 10 z" fill="#9A9DA6"/>
+      <path d="M0 0 L10 5 L0 10 z" fill="var(--ink3)"/>
     </marker>
   </defs>
   <g font-family="IBM Plex Sans, sans-serif" text-anchor="middle">
     <!-- sources -->
-    <g fill="#FFFFFF" stroke="#D6D3CB">
+    <g fill="var(--surface)" stroke="var(--rule2)">
       <rect x="8"   y="8" width="216" height="52" rx="9"/>
       <rect x="252" y="8" width="216" height="52" rx="9"/>
       <rect x="496" y="8" width="216" height="52" rx="9"/>
     </g>
-    <g font-size="13" fill="#5B5E66">
-      <text x="116" y="29">5 sportsbooks</text><text x="116" y="47" font-size="12" fill="#9A9DA6">moneylines, twice a day</text>
-      <text x="360" y="29">Circa's weekly PDF</text><text x="360" y="47" font-size="12" fill="#9A9DA6">every entry's pick</text>
-      <text x="604" y="29">Market spreads + futures</text><text x="604" y="47" font-size="12" fill="#9A9DA6">nflverse, title odds</text>
+    <g font-size="13" fill="var(--ink2)">
+      <text x="116" y="29">5 sportsbooks</text><text x="116" y="47" font-size="12" fill="var(--ink3)">moneylines, twice a day</text>
+      <text x="360" y="29">Circa's weekly PDF</text><text x="360" y="47" font-size="12" fill="var(--ink3)">every entry's pick</text>
+      <text x="604" y="29">Market spreads + futures</text><text x="604" y="47" font-size="12" fill="var(--ink3)">nflverse, title odds</text>
     </g>
     <!-- arrows down -->
-    <g stroke="#9A9DA6" stroke-width="1.5" marker-end="url(#a)" fill="none">
+    <g stroke="var(--ink3)" stroke-width="1.5" marker-end="url(#a)" fill="none">
       <path d="M116 62 L116 104"/><path d="M360 62 L360 104"/><path d="M604 62 L604 104"/>
     </g>
     <!-- metrics -->
-    <g fill="#F4F2EC" stroke="#D6D3CB">
+    <g fill="var(--panel)" stroke="var(--rule2)">
       <rect x="8"   y="108" width="216" height="46" rx="9"/>
       <rect x="252" y="108" width="216" height="46" rx="9"/>
       <rect x="496" y="108" width="216" height="46" rx="9"/>
     </g>
-    <g font-size="15" font-weight="600" fill="#17181C">
+    <g font-size="15" font-weight="600" fill="var(--ink)">
       <text x="116" y="130">W%</text><text x="360" y="130">P%</text><text x="604" y="130">Future</text>
     </g>
-    <g font-size="11.5" fill="#5B5E66">
+    <g font-size="11.5" fill="var(--ink2)">
       <text x="116" y="146">chance they win</text><text x="360" y="146">share of the field on them</text><text x="604" y="146">good weeks left</text>
     </g>
     <!-- into EV -->
-    <g stroke="#9A9DA6" stroke-width="1.5" marker-end="url(#a)" fill="none">
+    <g stroke="var(--ink3)" stroke-width="1.5" marker-end="url(#a)" fill="none">
       <path d="M116 156 L116 186 Q116 196 126 196 L214 196"/>
       <path d="M360 156 L360 186 Q360 196 350 196 L262 196"/>
     </g>
-    <rect x="216" y="176" width="144" height="42" rx="9" fill="#FFFFFF" stroke="#17181C" stroke-width="1.5"/>
-    <text x="288" y="194" font-size="15" font-weight="600" fill="#17181C">EV</text>
-    <text x="288" y="210" font-size="11.5" fill="#5B5E66">value this week</text>
+    <rect x="216" y="176" width="144" height="42" rx="9" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/>
+    <text x="288" y="194" font-size="15" font-weight="600" fill="var(--ink)">EV</text>
+    <text x="288" y="210" font-size="11.5" fill="var(--ink2)">value this week</text>
     <!-- into DILI -->
-    <g stroke="#9A9DA6" stroke-width="1.5" marker-end="url(#a)" fill="none">
+    <g stroke="var(--ink3)" stroke-width="1.5" marker-end="url(#a)" fill="none">
       <path d="M288 220 L288 262 Q288 272 298 272 L366 272"/>
       <path d="M604 156 L604 262 Q604 272 594 272 L514 272"/>
     </g>
-    <rect x="368" y="252" width="144" height="42" rx="9" fill="#EDF7EC" stroke="#2F8F3E" stroke-width="1.5"/>
-    <text x="440" y="270" font-size="15" font-weight="600" fill="#1C5E2A">DILI</text>
-    <text x="440" y="286" font-size="11.5" fill="#1C5E2A">should I pick them</text>
-    <text x="440" y="326" font-size="12" fill="#9A9DA6">via the entry's map of the rest of the season</text>
+    <rect x="368" y="252" width="144" height="42" rx="9" fill="var(--green-bg)" stroke="var(--green)" stroke-width="1.5"/>
+    <text x="440" y="270" font-size="15" font-weight="600" fill="var(--green-ink)">DILI</text>
+    <text x="440" y="286" font-size="11.5" fill="var(--green-ink)">should I pick them</text>
+    <text x="440" y="326" font-size="12" fill="var(--ink3)">via the entry's map of the rest of the season</text>
   </g>
 </svg>
 <figcaption>Each column depends only on the ones to its left on the dashboard. DILI is the end of the chain.</figcaption>

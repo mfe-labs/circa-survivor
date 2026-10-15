@@ -961,9 +961,18 @@ const CSS = `
 .csp { --paper:#FBFAF7; --panel:#F4F2EC; --surface:#FFFFFF; --ink:#17181C; --ink2:#5B5E66; --ink3:#9A9DA6; --rule:#E7E5DF; --rule2:#D6D3CB;
   --green:#2F8F3E; --green-ink:#1C5E2A; --green-bg:#DDF3DC; --sand:#F3EFE3; --sand-ink:#7A5A12; --amber:#C98A1A; --red:#D64545;
   --sel:#2F63C9; --sel-line:#9DB8E6; --sel-bg:#EAF0FA; --sel-bg2:#DCE6F6; --sel-bg3:#CFDCF2;
+  --on-ink:#FFFFFF; --btn-hover:#2A2C33; --fav-rgb:47,143,62; --fav-k:1; --overlay:rgba(255,255,255,.68); --claude-dot:#A3D2A9; --chip-ring:transparent;
   --th:40px; --rh:34px; --cw:52px; --gap:20px;
   display:flex; flex-direction:column; height:100vh; background:var(--paper); color:var(--ink);
   font-family:"IBM Plex Sans", -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; font-size:13px; font-variant-numeric:tabular-nums; -webkit-font-smoothing:antialiased; }
+/* ---- dark: the same paper/ink/one-green language, inverted and kept warm ---- */
+.csp.dark { --paper:#141412; --panel:#1C1C19; --surface:#22221F; --ink:#ECEAE4; --ink2:#AAA79F; --ink3:#78766F; --rule:#2D2C28; --rule2:#3B3A35;
+  --green:#5DBB6E; --green-ink:#93D59E; --green-bg:#1D3323; --sand:#28241A; --sand-ink:#D8B56B; --amber:#E2A740; --red:#EF6F6F;
+  --sel:#7AA2F0; --sel-line:#3D5A8F; --sel-bg:#1A2231; --sel-bg2:#1F2A3D; --sel-bg3:#253349;
+  --on-ink:#141412; --btn-hover:#D6D3CB; --fav-rgb:93,187,110; --fav-k:.55; --overlay:rgba(20,20,18,.72); --claude-dot:#3E7A49; --chip-ring:rgba(255,255,255,.22);
+  color-scheme:dark; }
+.csp.dark .chip { box-shadow:0 0 0 1px var(--chip-ring); }
+
 .csp * { box-sizing:border-box; }
 .csp h1 { font-size:20px; font-weight:600; letter-spacing:-0.01em; margin:0; display:flex; align-items:center; gap:14px; white-space:nowrap; }
 .csp h1 .ver { font-size:11px; font-weight:400; color:var(--ink3); }
@@ -985,8 +994,8 @@ const CSS = `
 .csp .btn, .csp .ghost, .csp .ctl select { height:32px; line-height:30px; padding:0 12px; font:inherit; font-size:13px; font-weight:500; border-radius:8px; border:1px solid var(--rule2); background:var(--surface); color:var(--ink); cursor:pointer; white-space:nowrap; }
 .csp .btn:hover, .csp .ghost:hover, .csp .ctl select:hover { border-color:var(--ink3); }
 .csp .btn:focus-visible, .csp .ghost:focus-visible, .csp .ctl select:focus-visible, .csp .seg button:focus-visible, .csp .views button:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
-.csp .btn { background:var(--ink); color:#fff; border-color:var(--ink); }
-.csp .btn:hover { background:#2a2c33; border-color:#2a2c33; }
+.csp .btn { background:var(--ink); color:var(--on-ink); border-color:var(--ink); }
+.csp .btn:hover { background:var(--btn-hover); border-color:var(--btn-hover); }
 .csp .btn:disabled, .csp .ghost:disabled { opacity:.45; cursor:default; }
 .csp .ghost.on { background:var(--panel); border-color:var(--ink3); }
 .csp .ctl select { appearance:none; -webkit-appearance:none; font-weight:600; padding-right:30px; background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5l3.5 3.5 3.5-3.5' fill='none' stroke='%2317181C' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 10px center; }
@@ -1068,7 +1077,7 @@ const CSS = `
 .csp tr.gone .team { box-shadow:inset 3px 0 0 var(--rule2); }
 
 /* week cells: one line, favorite strength as a faint tint */
-.csp td.c { width:var(--cw); min-width:var(--cw); height:var(--rh); text-align:center; position:relative; cursor:pointer; user-select:none; color:var(--ink); background:rgba(47,143,62,var(--fav,0)); line-height:1.1; padding-top:1px; }
+.csp td.c { width:var(--cw); min-width:var(--cw); height:var(--rh); text-align:center; position:relative; cursor:pointer; user-select:none; color:var(--ink); background:rgba(var(--fav-rgb),calc(var(--fav,0) * var(--fav-k))); line-height:1.1; padding-top:1px; }
 .csp.ro td.c, .csp td.c.other { cursor:default; }
 .csp td.c .sp { display:block; color:var(--ink2); font-size:10px; margin-top:2px; }
 .csp td.c .sp.proj { color:var(--ink3); font-style:italic; }
@@ -1105,7 +1114,7 @@ const CSS = `
 .csp .sum td.s { width:var(--cw); min-width:var(--cw); }
 .csp .sum td.s .chip { display:inline-block; min-width:38px; padding:2px 5px; border-radius:5px; font-size:11px; font-weight:600; line-height:16px; }
 .csp .sum td.s .chip.clr { position:relative; cursor:pointer; }
-.csp .sum td.s .chip.clr::after { content:"×"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; border-radius:inherit; font-size:16px; font-weight:600; color:var(--ink); background:rgba(255,255,255,.68); opacity:0; }
+.csp .sum td.s .chip.clr::after { content:"×"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; border-radius:inherit; font-size:16px; font-weight:600; color:var(--ink); background:var(--overlay); opacity:0; }
 .csp .sum td.s .chip.clr:hover::after { opacity:1; }
 .csp .sum td.empty { color:var(--rule2); font-weight:400; }
 .csp .sum tr.gap td { height:var(--gap); background:var(--paper); cursor:default; position:sticky; top:calc(var(--th) + var(--n) * var(--rh)); z-index:4; border-bottom:1px solid var(--rule); }
@@ -1155,7 +1164,7 @@ const CSS = `
 .csp .maptabs { display:flex; align-items:flex-end; gap:2px; margin:12px 0 0; padding:0 6px; background:linear-gradient(var(--rule2), var(--rule2)) left bottom / 100% 1px no-repeat; }
 .csp .maptabs > .tab { position:relative; display:flex; align-items:center; gap:8px; box-sizing:border-box; height:34px; padding:0 14px 0 12px; font:inherit; font-size:13px; font-weight:500; color:var(--ink2); background:none; border:1px solid transparent; border-radius:8px 8px 0 0; cursor:pointer; user-select:none; -webkit-user-select:none; white-space:nowrap; }
 .csp .maptabs > .tab::before { content:""; flex:none; width:7px; height:7px; border-radius:50%; background:var(--rule2); }
-.csp .maptabs > .tab.claude::before { background:#A3D2A9; }
+.csp .maptabs > .tab.claude::before { background:var(--claude-dot); }
 .csp .maptabs > .tab:hover { color:var(--ink); background:var(--panel); }
 .csp .maptabs > .tab.on { color:var(--ink); font-weight:600; background:var(--surface); border-color:var(--rule2); border-bottom-color:var(--surface); }
 .csp .maptabs > .tab.on::before { background:var(--ink3); }
@@ -1397,6 +1406,10 @@ export default function CircaSurvivorPlanner() {
   const data = useMemo(() => buildData({ picks: files.picks.json, actuals: files.actuals.json, odds: files.odds.json, ratings: files.ratings.json, splash: files.splash?.json }), [files.picks, files.actuals, files.odds, files.ratings, files.splash]);
   const entries = data.entries;
   const canEdit = !!user;
+  // light or dark, chosen with the header switch and remembered in this browser (no automatic switching)
+  const [theme, setTheme] = useState(() => { try { return localStorage.getItem("csp-theme") === "dark" ? "dark" : "light"; } catch { return "light"; } });
+  const toggleTheme = () => setTheme((t) => { const n = t === "dark" ? "light" : "dark"; try { localStorage.setItem("csp-theme", n); } catch {} return n; });
+  useEffect(() => { const bg = theme === "dark" ? "#141412" : "#FBFAF7"; document.documentElement.style.background = bg; document.body.style.background = bg; document.documentElement.dataset.theme = theme; }, [theme]);
 
   // ---- saving to the repo ----
   const saveTimer = useRef(null);
@@ -1675,7 +1688,7 @@ export default function CircaSurvivorPlanner() {
   })();
 
   return (
-    <div className={"csp" + (canPick ? "" : " ro")} onMouseDown={(e) => { if (e.target.closest("button")) e.preventDefault(); }}>
+    <div className={"csp" + (canPick ? "" : " ro") + (theme === "dark" ? " dark" : "")} onMouseDown={(e) => { if (e.target.closest("button")) e.preventDefault(); }}>
       <style>{CSS}</style>
       <div className="bar">
         <div className="left">
@@ -1697,6 +1710,7 @@ export default function CircaSurvivorPlanner() {
         <div className="ctl">
           <div className="row">
             {view !== "planner" && (status || !loaded) && <span className={"note" + (statusErr ? " err" : " msg")}>{!loaded ? "Loading…" : status}</span>}
+            <button className="link" onClick={toggleTheme} title="Switch between light and dark">{theme === "dark" ? "Light mode" : "Dark mode"}</button>
             <a className="link" href="guide.html" title="Plain-English walkthrough of every number here">How it works</a>
             <a className="link" href="math.html" title="Every projection worked out by hand, with rules of thumb">The math</a>
             {canEdit ? <><span className="who">{user}</span><button className="link" onClick={signOut}>Sign out</button></>
@@ -2221,7 +2235,7 @@ function Actuals({ data, params, canEdit, onSave }) {
                       <td>{num(n)}</td>
                       <td>{pctOf(n, tot)}</td>
                       <td style={{ textAlign: "left", width: "26%" }}><span className="bar" style={{ width: (100 * n / max) + "%" }} /></td>
-                      {hasM && <td style={{ color: "#6f6c66" }}>{fp(mp[t])}</td>}
+                      {hasM && <td style={{ color: "var(--ink2)" }}>{fp(mp[t])}</td>}
                       {showSp && (sp || spTh) && <td className="spc">{spCell(t)}</td>}
                       <td className="res">{k === "W" ? "Won" : k === "L" ? "Lost" : k === "P" ? "Pending" : ""}</td>
                       <td className="elim">{k === "L" ? "−" + num(n) : ""}</td>
@@ -2283,7 +2297,7 @@ function LegEditor({ legId, current, onSave, onCancel }) {
     <div className="editor">
       <h3>{legLabel(leg)} — Circa's posted selections</h3>
       <div className="row">
-        <span style={{ color: "#6f6c66" }}>Entries so far: <b>{total.toLocaleString()}</b></span>
+        <span style={{ color: "var(--ink2)" }}>Entries so far: <b>{total.toLocaleString()}</b></span>
         <button className="ghost" onClick={() => fillRest("pending")}>Rest = pending</button>
         <button className="ghost" onClick={() => fillRest("lost")}>Rest = lost</button>
       </div>
@@ -2304,7 +2318,7 @@ function LegEditor({ legId, current, onSave, onCancel }) {
       <div className="row">
         <button className="btn" onClick={submit}>Save to GitHub</button>
         <button className="ghost" onClick={onCancel}>Cancel</button>
-        <span style={{ color: "#6f6c66" }}>Teams with 0 entries are left out. Every team with entries needs a result before the leg's math is right.</span>
+        <span style={{ color: "var(--ink2)" }}>Teams with 0 entries are left out. Every team with entries needs a result before the leg's math is right.</span>
       </div>
     </div>
   );
@@ -2343,13 +2357,13 @@ function Chart({ pts, money, num, start }) {
       <div className="chart" style={{ minWidth: 280 }}>
         <h3>{title}</h3>
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }} fontFamily="inherit" fontSize="10">
-          <line x1={px} x2={W - px} y1={H - py} y2={H - py} stroke="#E7E5DF" />
-          <path d={d} fill="none" stroke={color} strokeWidth="2" />
+          <line x1={px} x2={W - px} y1={H - py} y2={H - py} style={{ stroke: "var(--rule)" }} />
+          <path d={d} fill="none" style={{ stroke: color }} strokeWidth="2" />
           {pts.map((p, i) => (
             <g key={i}>
-              <circle cx={xs[i]} cy={y(p[k])} r="3" fill={color} />
-              <text x={xs[i]} y={y(p[k]) - 8} textAnchor="middle" fill={color} fontWeight="600" fontSize={dense ? 8.5 : 10}>{label(p[k])}</text>
-              <text x={xs[i]} y={H - 6} textAnchor="middle" fill="#9A9DA6">{p.x}</text>
+              <circle cx={xs[i]} cy={y(p[k])} r="3" style={{ fill: color }} />
+              <text x={xs[i]} y={y(p[k]) - 8} textAnchor="middle" style={{ fill: color }} fontWeight="600" fontSize={dense ? 8.5 : 10}>{label(p[k])}</text>
+              <text x={xs[i]} y={H - 6} textAnchor="middle" style={{ fill: "var(--ink3)" }}>{p.x}</text>
             </g>
           ))}
         </svg>
@@ -2358,8 +2372,8 @@ function Chart({ pts, money, num, start }) {
   };
   return (
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-      <Mini title="Entries alive, by week" k="live" color="#5B5E66" fmt={num} top={start * 1.15} />
-      <Mini title="Your equity, by week" k="eq" color="#2F8F3E" fmt={money} />
+      <Mini title="Entries alive, by week" k="live" color="var(--ink2)" fmt={num} top={start * 1.15} />
+      <Mini title="Your equity, by week" k="eq" color="var(--green)" fmt={money} />
     </div>
   );
 }
