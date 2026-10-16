@@ -151,7 +151,7 @@ const lockedOnly = (en) => ({ ...en, picks: Object.fromEntries(Object.entries(en
     const picksNow = [rulesPlan(d2, e.picks, p2), simPlan(d2, e.picks, p2)].map((m) => m.plan[0].team);
     const tab2 = seasonTable(d2, p2), kk = tab2.nowIdx, later = LEGS.findIndex((l, i) => i > kk && OPP[l.id][thu]);
     ok("no map picks a team whose Thursday game is over", picksNow.every((t) => t !== thu && t !== opp), `${now.id}: ${thu}/${opp} played; maps pick ${picksNow.join(", ")}`);
-    ok("a played Thursday game is blocked this week only", Number.isNaN(tab2.z[kk][idx(thu)]) && Number.isNaN(tab2.z[kk][idx(opp)]) && (later < 0 || !Number.isNaN(tab2.z[later][idx(thu)])) && !Number.isNaN(tab.z[kk][idx(thu)]));
+    ok("a played Thursday game is blocked this week only", Number.isNaN(tab2.z[kk][idx(thu)]) && Number.isNaN(tab2.z[kk][idx(opp)]) && (later < 0 || !Number.isNaN(tab2.z[later][idx(thu)])) && (() => { const sp0 = JSON.parse(JSON.stringify(splash)); delete sp0.weeks[now.id]; const d0 = buildData({ picks, actuals, odds, ratings, splash: sp0 }); return !Number.isNaN(seasonTable(d0, fitParams(d0)).z[kk][idx(thu)]); })());
   }
 })();
 
