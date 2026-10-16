@@ -29,6 +29,20 @@ const COLORS = {
   NYJ: ["#125740", "#FFFFFF"], PHI: ["#004C54", "#A5ACAF"], PIT: ["#FFB612", "#101820"], SF: ["#AA0000", "#B3995D"],
   SEA: ["#002244", "#69BE28"], TB: ["#D50A0A", "#FFFFFF"], TEN: ["#0C2340", "#4B92DB"], WAS: ["#5A1414", "#FFB612"],
 };
+// The Planner's team stripe on a light background: most team colors are dark (navy, purple, maroon) and read as
+// near-black on white, so light mode lifts each to a mid lightness with the same hue, keeping its saturation in check.
+// Dark mode uses the team color as is, where the dark background already lets the hue show.
+const stripeTint = (hex) => {
+  const n = parseInt(hex.slice(1), 16), r = (n >> 16) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+  if (l >= 0.42) return hex;
+  let h = 0, sat = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  if (d) h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  h = (h * 60 + 360) % 360; sat = Math.min(sat, 0.62);
+  const L = 0.42, c = (1 - Math.abs(2 * L - 1)) * sat, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = L - c / 2;
+  const [R, G, B] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return "#" + [R, G, B].map((v) => Math.round((v + m) * 255).toString(16).padStart(2, "0")).join("");
+};
 
 // ---------- math ----------
 const normCdf = (x) => 0.5 * (1 + erf(x / Math.SQRT2));
@@ -1069,7 +1083,8 @@ const CSS = `
 .csp td.L.num.warn { color:var(--red); }
 .csp td.L.wp.num.fin { color:var(--ink3); font-weight:500; }
 .csp td.L.num.weak .n::after { content:""; display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--amber); margin-left:4px; vertical-align:2px; }
-.csp .team { box-shadow:inset 3px 0 0 var(--tc); }
+.csp .team { box-shadow:inset 3px 0 0 var(--tcl, var(--tc)); }
+.csp.dark .team { box-shadow:inset 3px 0 0 var(--tc); }
 .csp .team .hd { display:inline-block; width:6px; height:6px; border-radius:50%; margin-left:5px; vertical-align:1px; background:var(--sand-ink); opacity:.7; }
 .csp .team .hd.x { background:var(--red); }
 .csp .team .used { font-weight:400; color:var(--ink3); font-size:10px; margin-left:6px; }
@@ -1791,7 +1806,7 @@ export default function CircaSurvivorPlanner() {
                   <td className={"L dili num" + (st.dili == null ? " blank" : st.diliTop ? " hi" : "")} title={st.dili == null ? (!inLeg ? "No game this week" : usedLeg && usedLeg !== legId ? `Already used in ${legLabel(LEGS.find((x) => x.id === usedLeg))}` : st.final ? "Game is over" : "Needs an EV") : diliTip(st, team)}>
                     <Num d={st.dDili} kind="ev">{st.dili == null ? (!inLeg ? "no game" : usedLeg && usedLeg !== legId ? "used" : "–") : st.dili.toFixed(2)}</Num>
                   </td>
-                  <td className="L team" style={{ "--tc": COLORS[team][0] }}>
+                  <td className="L team" style={{ "--tc": COLORS[team][0], "--tcl": stripeTint(COLORS[team][0]) }}>
                     <span className="nm">{team}</span>
                     {TG_TEAMS.has(team) && <span className="hd" title="Plays in Thanksgiving leg" />}
                     {XM_TEAMS.has(team) && <span className="hd x" title="Plays in Christmas leg" />}
