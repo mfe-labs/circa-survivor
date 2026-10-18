@@ -614,7 +614,7 @@
    }
   },
   "W6": {
-   "asOf": "Oct 18 (4 pending)",
+   "asOf": "Oct 18 (2 pending)",
    "picks": {
     "LAR": 901,
     "SF": 119,
@@ -639,7 +639,9 @@
    "won": [
     "NE",
     "CAR",
+    "KC",
     "NO",
+    "BUF",
     "PIT",
     "DEN",
     "HOU"
@@ -657,8 +659,6 @@
    ],
    "pending": [
     "SF",
-    "KC",
-    "BUF",
     "DAL"
    ],
    "source": "https://www.circasports.com/wp-content/uploads/2026/10/Circa-Survivor-2026-Week-6-Selections.pdf",
