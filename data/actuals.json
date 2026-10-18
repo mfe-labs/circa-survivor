@@ -614,7 +614,7 @@
    }
   },
   "W6": {
-   "asOf": "Oct 18 (14 pending)",
+   "asOf": "Oct 18 (13 pending)",
    "picks": {
     "LAR": 901,
     "SF": 119,
@@ -641,6 +641,7 @@
     "HOU"
    ],
    "lost": [
+    "BAL",
     "SEA",
     "JAX",
     "NOPICK"
@@ -655,7 +656,6 @@
     "KC",
     "NO",
     "TB",
-    "BAL",
     "ATL",
     "BUF",
     "PIT",
