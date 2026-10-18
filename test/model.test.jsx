@@ -40,6 +40,7 @@ ok("fitParams returns a,b", Number.isFinite(params.a) && Number.isFinite(params.
 (() => {
   const locked = Object.keys(actuals.legs).filter((id) => OPP[id]);
   ok("every locked week has frozen future value for all its teams", locked.every((id) => actuals.legs[id].fv && Object.keys(OPP[id]).every((tm) => Number.isFinite(actuals.legs[id].fv[tm])) && actuals.legs[id].fvAt), locked.join(","));
+  ok("every locked week has its holiday lines frozen", locked.every((id) => ["TG", "XM"].every((h) => actuals.legs[id].hs?.[h] && Object.values(actuals.legs[id].hs[h]).every(Number.isFinite))), locked.join(","));
   const flat = buildData({ picks, actuals, odds, ratings: { ...ratings, ratings: Object.fromEntries(Object.keys(ratings.ratings).map((tm) => [tm, 0])) } });
   const id = locked[0], a = modelPick(id, data, params), f = modelPick(id, flat, params);
   ok("a locked week's model P% ignores today's ratings", Object.keys(a).every((tm) => Math.abs(a[tm] - f[tm]) < 1e-12), `${id}: frozen fv ${fvAt(id, "BAL", data)} vs live ${fvAt(id, "BAL", flat)}`);

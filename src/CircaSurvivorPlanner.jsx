@@ -277,21 +277,39 @@ function fvFor(legId, team, data) {
 
 const HOLIDAY_LEGS = [{ id: "TG", teams: TG_TEAMS }, { id: "XM", teams: XM_TEAMS }];
 const FIELD_SURVIVE = 0.8;                 // typical week-to-week survival of the field, for discounting far-off holidays
-// How much the field should be holding a team back for a holiday week it has not reached. Two parts:
-// how scarce that week's pool is (1 ÷ the teams still broadly available to the field) and how close the
-// week is, because nobody is saving teams for Thanksgiving in September.
+// How much the field holds a team back for a holiday week it has not reached: how good the team's holiday spot looks
+// (the same spot weight future value uses, on the raw projection the field sees), as a share of the good holiday
+// spots the field still holds, discounted by how far off the holiday is. A big Thanksgiving favorite in a pool with
+// few others is pressed hard; a team that is an underdog on the holiday barely at all. Fitted on the 2024 and 2025
+// Circa fields (Internet Archive copies of Circa's selection PDFs): from Week 6 to Thanksgiving this cut the model's
+// miss by 11% at HOLIDAY_C = 4, where the old version (pool scarcity only, same for every holiday team) managed 8%
+// and did nothing for 2026 Week 6. Fixed from those seasons, not fitted on this one: early in a season the term is
+// too small to measure, so a fit on the current weeks sat at 0 until the field's saving had already cost a week
+// (2026 Week 6: the model said Rams 45%, the field was 31%; with this term set before lock it says 33%).
+const HOLIDAY_C = 4;
+// A locked week uses the holiday lines frozen at its lock (actuals[leg].hs, written with fv by the results job), so
+// today's ratings cannot rewrite what the field was looking at, same as future value.
+function holidayWin(legId, h, t, data) {
+  const v = data?.actuals?.[legId]?.hs?.[h]?.[t];
+  return v != null ? v : lineFor(h, t, data, true)?.win ?? 0.5;
+}
+function holidayPressureWith(legId, team, data, av) {
+  const idx = LEGS.findIndex((l) => l.id === legId);
+  let p = 0;
+  for (const h of HOLIDAY_LEGS) {
+    const hi = LEGS.findIndex((l) => l.id === h.id);
+    if (hi <= idx || !h.teams.has(team)) continue;
+    const spot = (t) => spotWeight(holidayWin(legId, h.id, t, data));
+    const n = [...h.teams].reduce((sum, t) => sum + (av[t] ?? 1) * spot(t), 0);
+    if (n > 0) p += Math.pow(FIELD_SURVIVE, hi - idx) * spot(team) / n;
+  }
+  return p;
+}
+// what the results job freezes for a locked week: each holiday team's raw projected holiday win, as of the lock
+const holidayFreeze = (data) => Object.fromEntries(HOLIDAY_LEGS.map((h) => [h.id, Object.fromEntries([...h.teams].map((t) => [t, +(lineFor(h.id, t, data, true)?.win ?? 0.5).toFixed(3)]))]));
+// the leg's own availability is fixed per snapshot, so this one is memoised (the fit asks for it thousands of times)
 function holidayPressure(legId, team, data, av) {
-  return cached(data, "hp", legId + "|" + team, () => {
-    const idx = LEGS.findIndex((l) => l.id === legId);
-    let p = 0;
-    for (const h of HOLIDAY_LEGS) {
-      const hi = LEGS.findIndex((l) => l.id === h.id);
-      if (hi <= idx || !h.teams.has(team)) continue;
-      const n = [...h.teams].reduce((sum, t) => sum + (av[t] ?? 1), 0);
-      if (n > 0) p += Math.pow(FIELD_SURVIVE, hi - idx) / n;
-    }
-    return p;
-  });
+  return cached(data, "hp", legId + "|" + team, () => holidayPressureWith(legId, team, data, av));
 }
 
 // ---------- DILI: "do I love it?" — this week's EV net of what the team is worth to keep ----------
@@ -323,7 +341,7 @@ const gauss = (r) => { let u = 0, v = 0; while (!u) u = r(); while (!v) v = r();
 // the field picks by the model (Circa's actual shares for a locked week), the losers drop out, and survivors
 // who picked a team no longer hold it.
 function projectField(legId, data, params) {
-  return cached(data, "pf", `${legId}|${params.a}|${params.b}`, () => {
+  return cached(data, "pf", `${legId}|${params.a}|${params.b}|${params.c ?? 0}`, () => {
     const idx = LEGS.findIndex((l) => l.id === legId);
     let av = { ...availability(legId, data) };
     const out = {};
@@ -334,7 +352,7 @@ function projectField(legId, data, params) {
       if (act) { const tot = Object.values(act.picks).reduce((a, b) => a + b, 0); p = Object.fromEntries(Object.entries(act.picks).map(([t, n]) => [t, n / tot])); }
       else {
         const sc = {}; let tot = 0;
-        for (const t of Object.keys(OPP[l.id])) { const w = lineFor(l.id, t, data)?.win; if (w == null || w < 0.5) continue; const v = Math.pow(w, params.a) * Math.exp(-params.b * fvFor(l.id, t, data)) * av[t]; sc[t] = v; tot += v; }
+        for (const t of Object.keys(OPP[l.id])) { const w = lineFor(l.id, t, data)?.win; if (w == null || w < 0.5) continue; const v = Math.pow(w, params.a) * Math.exp(-params.b * fvFor(l.id, t, data)) * Math.exp(-(params.c ?? 0) * (k === 0 ? holidayPressure(l.id, t, data, av) : holidayPressureWith(l.id, t, data, av))) * av[t]; sc[t] = v; tot += v; }
         p = {}; for (const t in sc) p[t] = tot > 0 ? sc[t] / tot : 0;
         capShares(p, av);
         if (k === 0) { const an = splashAnchor(l.id, data); if (an) p = applyAnchor(blendAnchor(an, p, params), p); }
@@ -354,7 +372,7 @@ function projectField(legId, data, params) {
 // payoff and put underdogs on the map), and the shared noise draws. "Now" is the first week Circa has not published picks for (lockedIdx), so a week
 // leaves the plan the moment its picks are in. Built once per data snapshot.
 function seasonTable(data, params) {
-  return cached(data, "st", `${params.a}|${params.b}`, () => {
+  return cached(data, "st", `${params.a}|${params.b}|${params.c ?? 0}`, () => {
     const n = ALL_TEAMS.length, nowIdx = lockedIdx(data);
     const near = nowIdx < LEGS.length ? projectField(LEGS[nowIdx].id, data, params) : {};
     const z = LEGS.map(() => new Float64Array(n).fill(NaN)), sd = LEGS.map(() => new Float64Array(n)), ff = LEGS.map(() => new Float64Array(n));
@@ -914,8 +932,8 @@ function modelPickRange(legId, data, params, now = Date.now()) {
 // The weight is divided by the square of the number of weeks fitted: one week keeps the full guardrail, four
 // weeks leave a sixteenth of it. Backtested week by week (fit on earlier weeks, predict the next) this matched
 // an unguarded fit's gains in Weeks 3 and 4 without its Week 2 damage.
-const PRIOR = { a: 8, b: 0.15, c: 0 };
-const PRIOR_SPREAD = { a: 6, b: 0.25, c: 1.5 };
+const PRIOR = { a: 8, b: 0.15, c: HOLIDAY_C };
+const PRIOR_SPREAD = { a: 6, b: 0.25 };
 const PRIOR_WEIGHT = 0.03;
 const SHARE_FLOOR = 0.02;
 function fitParams(data) {
@@ -931,18 +949,11 @@ function fitParams(data) {
     return err;
   };
   const w = PRIOR_WEIGHT / (legs.length * legs.length);
-  const score = (a, b, c) => miss(a, b, c) + w * (((a - PRIOR.a) / PRIOR_SPREAD.a) ** 2 + ((b - PRIOR.b) / PRIOR_SPREAD.b) ** 2 + ((c - PRIOR.c) / PRIOR_SPREAD.c) ** 2);
-  // Coordinate descent rather than a three-way grid: (a, b) together, then c, twice. Same answer on a
-  // surface this smooth, without multiplying the work by the size of the c grid.
-  let cur = { ...PRIOR };
-  for (let pass = 0; pass < 2; pass++) {
-    let best = null;
-    for (let a = 2; a <= 24; a += 1) for (let b = 0; b <= 0.8; b += 0.02) { const sc = score(a, b, cur.c); if (!best || sc < best.sc) best = { a, b: +b.toFixed(2), sc }; }
-    cur = { ...cur, a: best.a, b: best.b };
-    let bc = null;
-    for (let c = 0; c <= 6; c += 0.25) { const sc = score(cur.a, cur.b, c); if (!bc || sc < bc.sc) bc = { c, sc }; }
-    cur = { ...cur, c: bc.c };
-  }
+  const score = (a, b) => miss(a, b, HOLIDAY_C) + w * (((a - PRIOR.a) / PRIOR_SPREAD.a) ** 2 + ((b - PRIOR.b) / PRIOR_SPREAD.b) ** 2);
+  // the holiday knob is held at HOLIDAY_C (fitted on past seasons, see holidayPressure); a and b are fitted here
+  let best = null;
+  for (let a = 2; a <= 24; a += 1) for (let b = 0; b <= 0.8; b += 0.02) { const sc = score(a, b); if (!best || sc < best.sc) best = { a, b: +b.toFixed(2), sc }; }
+  const cur = { a: best.a, b: best.b, c: HOLIDAY_C };
   return { ...cur, err: miss(cur.a, cur.b, cur.c), legs: legs.length, ...bandError(data, cur, legs) };
 }
 // mean L1 error of the model vs Circa actuals on legs where both exist
@@ -968,7 +979,7 @@ export function entryStatus(entry, actualLegs) {
   return { alive: true, leg: null };
 }
 
-export { spotWeight, seasonTable, mapLegs, expWin, survivalPath, capShares, projectField, lineFor, modelPickRange, fvAt, bandError, strengthWeight, futureFor, marketLine, splashAnchor, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
+export { holidayFreeze, spotWeight, seasonTable, mapLegs, expWin, survivalPath, capShares, projectField, lineFor, modelPickRange, fvAt, bandError, strengthWeight, futureFor, marketLine, splashAnchor, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
 
 const CSS = `
 /* ---- tokens: paper, ink, one green ---- */
@@ -1867,7 +1878,7 @@ function AuditPanel({ legId, data, params, merr, stats, evNote, map }) {
         <div className="sec">
           <h4>P% — pick popularity</h4>
           {act ? <p>Locked week: P% is Circa's posted distribution.</p>
-            : <p>Field model <code>win^{params.a} × e^(−{params.b} × future value) × e^(−{params.c ?? 0} × holiday pressure) × availability</code>, normalized over favored teams. Fit on {params.legs} week{params.legs === 1 ? "" : "s"} of Circa actuals, weighting each team's miss by its share{merr ? <>; average miss so far {pc(merr.err)} per team</> : null}. Holiday pressure is how scarce an upcoming holiday pool is and how close it is; with {params.c ? "the weight the data has chosen" : "the weight still at zero, since nothing in the data yet says the field is saving holiday teams"}. The fit uses each past week's future values as they stood at that week's lock, not today's.{(() => { const an = splashAnchor(legId, data); return an ? ` Splash's Thursday reading for this week: ${Object.entries(an.raw).map(([t, v]) => `${t} ${(100 * v).toFixed(1)}%`).join(", ")} of ${an.alive.toLocaleString()} entries, mapped to ${Object.entries(an.shares).map(([t, v]) => `${t} ${(100 * v).toFixed(0)}%`).join(", ")} (Circa ≈ Splash^${an.gamma}), then blended with the model by how wrong each has been so far (mapping ×${Math.exp(an.err.top).toFixed(2)} on the top pick over ${an.err.nTop} weeks, model ×${Math.exp(params.errTop ?? 0.1).toFixed(2)}), and the rest of the field is scaled to fit${Object.keys(an.final).length ? `; the Thursday game is final (${Object.entries(an.final).map(([t, f]) => `${t} ${f === "W" ? "won" : "lost"}`).join(", ")})` : ""}.` : ""; })()} The P% band re-runs the model over line movement and the model's own misses so far: a factor of about ×{Math.exp(params.errTop ?? 0.1).toFixed(2)} on its top pick and ×{Math.exp(params.errOther ?? 0.35).toFixed(2)} on everyone else, measured on {params.nTop ?? 0} weeks.</p>}
+            : <p>Field model <code>win^{params.a} × e^(−{params.b} × future value) × e^(−{params.c ?? 0} × holiday pressure) × availability</code>, normalized over favored teams. Fit on {params.legs} week{params.legs === 1 ? "" : "s"} of Circa actuals, weighting each team's miss by its share{merr ? <>; average miss so far {pc(merr.err)} per team</> : null}. Holiday pressure is how good a team's Thanksgiving or Christmas spot looks, as a share of the good holiday spots the field still holds, and how close the holiday is; its weight is set from the 2024 and 2025 Circa fields, because early in a season the field's holiday saving is too small to measure until it has already happened. The fit uses each past week's future values as they stood at that week's lock, not today's.{(() => { const an = splashAnchor(legId, data); return an ? ` Splash's Thursday reading for this week: ${Object.entries(an.raw).map(([t, v]) => `${t} ${(100 * v).toFixed(1)}%`).join(", ")} of ${an.alive.toLocaleString()} entries, mapped to ${Object.entries(an.shares).map(([t, v]) => `${t} ${(100 * v).toFixed(0)}%`).join(", ")} (Circa ≈ Splash^${an.gamma}), then blended with the model by how wrong each has been so far (mapping ×${Math.exp(an.err.top).toFixed(2)} on the top pick over ${an.err.nTop} weeks, model ×${Math.exp(params.errTop ?? 0.1).toFixed(2)}), and the rest of the field is scaled to fit${Object.keys(an.final).length ? `; the Thursday game is final (${Object.entries(an.final).map(([t, f]) => `${t} ${f === "W" ? "won" : "lost"}`).join(", ")})` : ""}.` : ""; })()} The P% band re-runs the model over line movement and the model's own misses so far: a factor of about ×{Math.exp(params.errTop ?? 0.1).toFixed(2)} on its top pick and ×{Math.exp(params.errOther ?? 0.35).toFixed(2)} on everyone else, measured on {params.nTop ?? 0} weeks.</p>}
         </div>
         <div className="sec">
           <h4>DILI — do I love it?</h4>

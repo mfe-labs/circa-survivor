@@ -60,9 +60,13 @@ each with its own pick. Each team once per entry. Tie = loss. Schedule is hard-c
 - Shares are capped at availability (`capShares`): no team takes more of the field than the share of live entries
   still holding it; the excess is spread over the rest in proportion. Applied in modelPick, modelPickRange and
   projectField. Inactive through Week 5 (no favorite near its cap); matters once popular teams are spent.
-  `HP` (holiday pressure) is the scarcity of each upcoming holiday pool (1/teams still available to the field)
-  weighted by how near that week is (0.8 per week), and zero once it passes. `a`, `b`, `c` are fit by coordinate
-  descent against every leg with actuals, with a prior penalty of `PRIOR_WEIGHT / legs²` (full guardrail on one
+  `HP` (holiday pressure) is how good a team's Thanksgiving/Christmas spot looks (spotWeight of its raw projected
+  holiday win) as a share of the good holiday spots the field still holds (Σ availability × spotWeight over the pool),
+  weighted by how near that week is (0.8 per week), and zero once it passes. `c` is fixed at `HOLIDAY_C = 4`, fitted on
+  the 2024 and 2025 Circa fields (selection PDFs via the Internet Archive): Weeks 6–Thanksgiving miss −11%. It is not
+  fitted on the current season, because early weeks cannot see it (2026 W1–5 fit c = 0, then Week 6's Rams came in at
+  31% against a projected 45%; with this term set before lock the projection is 33%). `a`, `b` are fit by grid search
+  against every leg with actuals, with a prior penalty of `PRIOR_WEIGHT / legs²` (full guardrail on one
   week, a sixteenth on four). The Model details panel has the per-team audit table.
 - Each locked leg also carries `fv` (every team's future value as it stood at that Saturday's lock, 2 dp) and
   `fvAt` (the ratings timestamp used). `scripts/freeze-fv.jsx` writes it once, in the results job right after
