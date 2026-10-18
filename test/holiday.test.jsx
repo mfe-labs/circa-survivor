@@ -19,10 +19,14 @@ const hot = [...TG_TEAMS, ...XM_TEAMS].sort((x, y) => P("W3", y) - P("W3", x))[0
 ok("pressure grows as the holiday nears", P("W11", hot) > P("W9", hot) && P("W9", hot) > P("W3", hot), `${hot}: W3 ${P("W3", hot).toFixed(3)} → W11 ${P("W11", hot).toFixed(3)}`);
 ok("a passed holiday stops counting", P("TG", "KC") === 0 && P("W12", "KC") === 0, "KC plays Thanksgiving only");
 ok("nothing left to save for after Christmas", P("XM", "BUF") === 0 && P("W17", "BUF") === 0);
-ok("Christmas presses harder than Thanksgiving at the same distance", (() => {
+// each pool's pressure is shared out by how good the spots look, weighted by who still holds each team, so across
+// the whole pool it adds up to the distance discount alone: 0.8^(weeks to the holiday) per holiday
+ok("a pool's pressure adds up to its distance discount", (() => {
+  const idx = LEGS.findIndex((l) => l.id === "W3");
+  const want = ["TG", "XM"].reduce((s, h) => s + Math.pow(0.8, LEGS.findIndex((l) => l.id === h) - idx), 0);
   const av = availability("W3", data);
-  const tg = [...TG_TEAMS].reduce((s, t) => s + (av[t] ?? 1), 0), xm = [...XM_TEAMS].reduce((s, t) => s + (av[t] ?? 1), 0);
-  return xm < tg;   // 8 eligible vs 10, so each Christmas team is a bigger slice of its pool
+  const got = ALL_TEAMS.reduce((s, t) => s + (av[t] ?? 1) * P("W3", t), 0);
+  return Math.abs(got - want) < 1e-9;
 })());
 
 // Effect on the model. Shares are normalised, so what decides the direction is a team's pressure
