@@ -492,6 +492,87 @@
     "LAR": 5.74
    },
    "fvAt": "2026-10-11T01:57:48.839Z"
+  },
+  "W6": {
+   "asOf": "Oct 17 (16 pending)",
+   "picks": {
+    "LAR": 901,
+    "SF": 119,
+    "IND": 703,
+    "NE": 821,
+    "NYG": 7,
+    "CAR": 124,
+    "KC": 188,
+    "NO": 4,
+    "TB": 2,
+    "BAL": 9,
+    "SEA": 1,
+    "ATL": 2,
+    "BUF": 13,
+    "PIT": 6,
+    "DAL": 4,
+    "JAX": 3,
+    "DEN": 1,
+    "HOU": 1,
+    "NOPICK": 1
+   },
+   "won": [
+    "DEN"
+   ],
+   "lost": [
+    "SEA",
+    "NOPICK"
+   ],
+   "pending": [
+    "LAR",
+    "SF",
+    "IND",
+    "NE",
+    "NYG",
+    "CAR",
+    "KC",
+    "NO",
+    "TB",
+    "BAL",
+    "ATL",
+    "BUF",
+    "PIT",
+    "DAL",
+    "JAX",
+    "HOU"
+   ],
+   "source": "https://www.circasports.com/wp-content/uploads/2026/10/Circa-Survivor-2026-Week-6-Selections.pdf",
+   "fv": {
+    "SEA": 4.68,
+    "DEN": 4.29,
+    "HOU": 3.05,
+    "JAX": 5.37,
+    "NYJ": 0.79,
+    "NE": 2.83,
+    "PIT": 1.42,
+    "TB": 0.18,
+    "CAR": 0.8,
+    "PHI": 1.8,
+    "CHI": 2.86,
+    "ATL": 0.79,
+    "TEN": 0.05,
+    "IND": 2.08,
+    "NO": 1.39,
+    "NYG": 0.2,
+    "BAL": 4.07,
+    "CLE": 0.22,
+    "ARI": 0.23,
+    "LAR": 6.06,
+    "LAC": 1.16,
+    "KC": 4.25,
+    "BUF": 5.67,
+    "LV": 1.01,
+    "DAL": 3.31,
+    "GB": 1.48,
+    "WAS": 0.42,
+    "SF": 4.41
+   },
+   "fvAt": "2026-10-18T01:08:43.651Z"
   }
  }
 }
