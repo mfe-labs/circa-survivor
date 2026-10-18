@@ -1497,6 +1497,7 @@ export default function CircaSurvivorPlanner() {
       const entry = legFromCirca(sel.parsed, results, before, sel.url);
       entry.fv = {}; for (const t of Object.keys(OPP[openId])) entry.fv[t] = +fvFor(openId, t, d).toFixed(2);
       entry.fvAt = d.ratingsAt || new Date().toISOString();
+      entry.hs = holidayFreeze(d);
       setJson("actuals", (a) => ({ ...(a || {}), legs: { ...(a?.legs || {}), [openId]: entry } }));
       setCircaLive({ legId: openId, status: "got", at: Date.now(), total: sel.parsed.total });
       if (canEdit) setTimeout(() => save("actuals", `Actuals: ${legLabel(leg)} (read from Circa by the app)`), 0);
