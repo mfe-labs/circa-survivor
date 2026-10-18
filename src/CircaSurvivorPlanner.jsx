@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { LEGS, ALL_TEAMS, OPP, TG_TEAMS, XM_TEAMS, legLabel, REST_PTS, restEdge } from "./schedule.js";
+import { LEGS, ALL_TEAMS, OPP, TG_TEAMS, XM_TEAMS, legLabel, REST_PTS, restEdge, nflWeek } from "./schedule.js";
 import { HFA } from "./ratings.js";
 import { REPO, readFile, writeFile, whoAmI, dispatchWorkflow } from "./github.js";
 import { fetchSelections, fetchResults, legFromCirca, rescore } from "./circaLive.js";
@@ -924,17 +924,21 @@ function modelPickRange(legId, data, params, now = Date.now()) {
 // Fit a, b to every leg that has both actuals and lines (grid search).
 // The miss on each team is weighted by that team's actual share (plus a small floor so ignored teams still
 // count a little), because EV depends almost entirely on the few teams the field piles onto.
-// A mild penalty holds the knobs near PRIOR while there are only a week or two of actuals; once several
-// weeks accumulate the evidence outweighs it and the knobs go wherever Circa's numbers say.
-// The prior stops an early-season fit chasing one odd week. Each knob is measured against a plausible
-// SPREAD, not against its own size: dividing by the value itself made any movement in b (which starts near
-// 0.15) cost hundreds of times more than the error it saved, so b was frozen rather than restrained. The
-// The weight is divided by the square of the number of weeks fitted: one week keeps the full guardrail, four
-// weeks leave a sixteenth of it. Backtested week by week (fit on earlier weeks, predict the next) this matched
-// an unguarded fit's gains in Weeks 3 and 4 without its Week 2 damage.
-const PRIOR = { a: 8, b: 0.15, c: HOLIDAY_C };
+// A penalty holds the knobs near a prior taken from the 2024 and 2025 Circa fields (Internet Archive copies of
+// Circa's selection PDFs), so the model anticipates the field instead of waiting to be taught by it. Over a whole
+// season the field chases favorites at the same rate every year (a = 12, 13, 12 in 2024, 2025, 2026 through Week 6)
+// and saves for later within a range (b = 0.16, 0.38, 0.24), so the season opens at PRIOR_EARLY. After Week 6 the
+// field spreads out: in both past seasons a fell to 9–11 and b fell too, so once Week 6 is fitted the anchor moves
+// to PRIOR_LATE. Each knob is measured against a plausible SPREAD, not against its own size (dividing by the value
+// itself froze b rather than restraining it). The weight is PRIOR_WEIGHT ÷ weeks fitted, with a floor of
+// PRIOR_FLOOR so the pull never fades to nothing: a fit that wanders on one odd week (2026 Week 4: b jumped to 0.62
+// after two weeks and missed by 60 points) is held, while several steady weeks still move the knobs. Backtested
+// week by week (fit on earlier weeks, predict the next) against the old guardrail (8/0.15, weight 0.03 ÷ weeks²):
+// mean miss 41.7 → 36.5 in 2024, 50.8 → 49.2 in 2025, 31.5 → 21.7 in 2026 Weeks 1–6; better in all three.
+const PRIOR_EARLY = { a: 12, b: 0.2 }, PRIOR_LATE = { a: 10, b: 0.2 };
+const PRIOR = { ...PRIOR_EARLY, c: HOLIDAY_C };
 const PRIOR_SPREAD = { a: 6, b: 0.25 };
-const PRIOR_WEIGHT = 0.03;
+const PRIOR_WEIGHT = 0.3, PRIOR_FLOOR = 0.15, PRIOR_LATE_WEEK = 6;
 const SHARE_FLOOR = 0.02;
 function fitParams(data) {
   const legs = Object.keys(data.actuals).filter((id) => OPP[id] && Object.keys(OPP[id]).some((t) => marketLine(id, t, data)));
@@ -948,13 +952,14 @@ function fitParams(data) {
     }
     return err;
   };
-  const w = PRIOR_WEIGHT / (legs.length * legs.length);
-  const score = (a, b) => miss(a, b, HOLIDAY_C) + w * (((a - PRIOR.a) / PRIOR_SPREAD.a) ** 2 + ((b - PRIOR.b) / PRIOR_SPREAD.b) ** 2);
+  const w = Math.max(PRIOR_WEIGHT / legs.length, PRIOR_FLOOR);
+  const late = legs.some((id) => nflWeek(LEGS.find((l) => l.id === id)) >= PRIOR_LATE_WEEK), pr = late ? PRIOR_LATE : PRIOR_EARLY;
+  const score = (a, b) => miss(a, b, HOLIDAY_C) + w * (((a - pr.a) / PRIOR_SPREAD.a) ** 2 + ((b - pr.b) / PRIOR_SPREAD.b) ** 2);
   // the holiday knob is held at HOLIDAY_C (fitted on past seasons, see holidayPressure); a and b are fitted here
   let best = null;
   for (let a = 2; a <= 24; a += 1) for (let b = 0; b <= 0.8; b += 0.02) { const sc = score(a, b); if (!best || sc < best.sc) best = { a, b: +b.toFixed(2), sc }; }
   const cur = { a: best.a, b: best.b, c: HOLIDAY_C };
-  return { ...cur, err: miss(cur.a, cur.b, cur.c), legs: legs.length, ...bandError(data, cur, legs) };
+  return { ...cur, err: miss(cur.a, cur.b, cur.c), legs: legs.length, prior: pr, ...bandError(data, cur, legs) };
 }
 // mean L1 error of the model vs Circa actuals on legs where both exist
 function modelError(data, params) {

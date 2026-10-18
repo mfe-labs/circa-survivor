@@ -66,8 +66,10 @@ each with its own pick. Each team once per entry. Tie = loss. Schedule is hard-c
   the 2024 and 2025 Circa fields (selection PDFs via the Internet Archive): Weeks 6–Thanksgiving miss −11%. It is not
   fitted on the current season, because early weeks cannot see it (2026 W1–5 fit c = 0, then Week 6's Rams came in at
   31% against a projected 45%; with this term set before lock the projection is 33%). `a`, `b` are fit by grid search
-  against every leg with actuals, with a prior penalty of `PRIOR_WEIGHT / legs²` (full guardrail on one
-  week, a sixteenth on four). The Model details panel has the per-team audit table.
+  against every leg with actuals, with a prior penalty of `max(PRIOR_WEIGHT / legs, PRIOR_FLOOR)` toward a prior
+  taken from the 2024–25 fields: `PRIOR_EARLY` (12 / 0.2) until Week 6 is in, then `PRIOR_LATE` (10 / 0.2), because
+  both past seasons spread out across favorites in the second half. Week-ahead backtest vs the old guardrail
+  (8 / 0.15, weight ÷ legs²): 41.7 → 36.5 (2024), 50.8 → 49.2 (2025), 31.5 → 21.7 (2026 W1–6). The Model details panel has the per-team audit table.
 - Each locked leg also carries `fv` (every team's future value as it stood at that Saturday's lock, 2 dp) and
   `fvAt` (the ratings timestamp used). `scripts/freeze-fv.jsx` writes it once, in the results job right after
   fetch-actuals, bundled with esbuild (`npm run freeze-fv`); fetch-actuals carries it through later rewrites of the

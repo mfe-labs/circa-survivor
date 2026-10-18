@@ -35,7 +35,7 @@ if (legWithLines) {
 } else console.log("(no unlocked leg with lines in odds.json — model check skipped)");
 const params = fitParams(data);
 ok("fitParams returns a,b", Number.isFinite(params.a) && Number.isFinite(params.b), `a=${params.a} b=${params.b} legs=${params.legs}`);
-// with only a week or two of actuals the knobs stay near the prior (8 / 1.5) instead of running to a corner
+// with only a week or two of actuals the knobs stay near the prior (12 / 0.2) instead of running to a corner
 // frozen future value: every locked week carries the numbers the field saw, and the fit uses them
 (() => {
   const locked = Object.keys(actuals.legs).filter((id) => OPP[id]);
@@ -82,7 +82,13 @@ ok("fitParams returns a,b", Number.isFinite(params.a) && Number.isFinite(params.
 })();
 ok("early-season knobs stay in a sane range", params.legs <= 3 ? params.a >= 5 && params.a <= 16 && params.b >= 0.05 && params.b <= 0.6 : true, `a=${params.a} b=${params.b}`);
 // no actuals at all → the prior itself
-ok("no actuals → prior", (() => { const p = fitParams({ ...data, actuals: {} }); return p.a === 8 && p.b === 0.15 && p.legs === 0; })());
+ok("no actuals → prior", (() => { const p = fitParams({ ...data, actuals: {} }); return p.a === 12 && p.b === 0.2 && p.legs === 0; })());
+// the anchor moves once Week 6 is in: the field spreads out in the second half of a season (2024 and 2025 both)
+ok("the fit anchors to the early prior before Week 6 and the late one after", (() => {
+  const upTo = (n) => Object.fromEntries(Object.entries(actuals.legs).filter(([id]) => OPP[id] && +LEGS.find((l) => l.id === id).label <= n));
+  const early = fitParams(buildData({ picks, actuals: { ...actuals, legs: upTo(5) }, odds, ratings })), late = fitParams(buildData({ picks, actuals: { ...actuals, legs: upTo(6) }, odds, ratings }));
+  return early.prior.a === 12 && (late.legs < 6 || late.prior.a === 10);
+})());
 // share weighting: one fit across every week must still land each week's most-picked team within 8 pts
 (() => {
   const miss = Object.entries(actuals.legs).filter(([id]) => OPP[id]).map(([id, a]) => {
