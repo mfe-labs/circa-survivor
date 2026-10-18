@@ -1641,9 +1641,10 @@ export default function CircaSurvivorPlanner() {
       const ln = lineFor(k, t, data); return ln && ln.spread != null ? -ln.spread : -Infinity; // favorites first
     };
     // on the number columns, rows without a number sort below the numbers in a fixed order: decided games, then
-    // teams with no game this week, then teams this entry has already used
-    const numeric = ["ev", "wp", "pp", "fv", "dili"].includes(k);
-    const tier = (t) => { if (!numeric) return 0; if (!OPP[legId][t]) return 2; if (usedBy[t] && usedBy[t] !== legId) return 3; if (stats[t].final) return 1; return 0; };
+    // teams with no game this week, then teams this entry has already used. P% and Win % describe the field and
+    // the game, not this entry, so a used team keeps its place in those orders.
+    const numeric = ["ev", "wp", "pp", "fv", "dili"].includes(k), entryCol = ["ev", "fv", "dili"].includes(k);
+    const tier = (t) => { if (!numeric) return 0; if (!OPP[legId][t]) return 2; if (entryCol && usedBy[t] && usedBy[t] !== legId) return 3; if (stats[t].final) return 1; return 0; };
     return [...ALL_TEAMS].sort((a, b) => { const ta = tier(a), tb = tier(b); if (ta !== tb) return ta - tb; const va = val(a), vb = val(b); if (va === vb) return a < b ? -1 : 1; return (va < vb ? 1 : -1) * d; });
   }, [sort, stats, data, legId, usedBy]);
 
