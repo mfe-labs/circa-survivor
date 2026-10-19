@@ -1,5 +1,5 @@
 // Field timeline + popularity model on the real data files.
-import { buildData, fieldTimeline, modelPick, modelPickRange, fitParams, availability, fvAt, splashAnchor, splashMap, holidayPressure, computeEV, capShares, projectField, lineFor, spotWeight } from "../src/CircaSurvivorPlanner.jsx";
+import { buildData, fieldTimeline, modelPick, modelPickRange, fitParams, availability, fvAt, splashAnchor, splashMap, blendAnchor, holidayPressure, computeEV, capShares, projectField, lineFor, spotWeight } from "../src/CircaSurvivorPlanner.jsx";
 import { OPP, LEGS } from "../src/schedule.js";
 import picks from "../data/picks.json";
 import actuals from "../data/actuals.json";
@@ -61,6 +61,13 @@ ok("fitParams returns a,b", Number.isFinite(params.a) && Number.isFinite(params.
   // power rule (the normaliser shrinks with everyone else's hold-back) and a pressed team maps below it
   const free = Object.keys(OPP[open]).find((x) => holidayPressure(open, x, d, availability(open, d)) === 0), pressed = Object.keys(OPP[open]).sort((x, y) => holidayPressure(open, y, d, availability(open, d)) - holidayPressure(open, x, d, availability(open, d)))[0];
   const plainRule = (sp) => Math.pow(sp, 1.2) / an.Z;
+  // a Thursday team the field is saving for a holiday gets at most a third of its blend from Splash
+  (() => {
+    const th = {}; th[pressed] = 1500; if (free) th[free] = 1500;
+    const d2 = buildData({ picks, actuals, odds, ratings, splash: { mapping: { gamma: 1.2 }, weeks: { ...splash.weeks, [open]: { thursday: { alive: 5000, picks: th } } } } });
+    const a2 = splashAnchor(open, d2), bl = blendAnchor(a2, modelPick(open, data, params), params);
+    ok("a holiday-held Thursday team gets at most a third of its blend from Splash; an unheld one keeps the track-record weight", bl.held[pressed] && bl.w[pressed] <= 1 / 3 + 1e-9 && (!free || (!bl.held[free] && bl.w[free] > 1 / 3)), `${pressed} ${(100 * bl.w[pressed]).toFixed(0)}%${free ? ` ${free} ${(100 * bl.w[free]).toFixed(0)}%` : ""}`);
+  })();
   ok("no holiday pressure → at or above the plain rule; the most pressed team → below it", (!free || splashMap(open, free, 0.2, d) >= plainRule(0.2) - 1e-9) && splashMap(open, pressed, 0.2, d) < plainRule(0.2), `${free}: ${(100 * splashMap(open, free, 0.2, d)).toFixed(1)} ${pressed}: ${(100 * splashMap(open, pressed, 0.2, d)).toFixed(1)} vs plain ${(100 * plainRule(0.2)).toFixed(1)}`);
   const plain = modelPick(open, data, params), pinned = modelPick(open, d, params);
   const sum = Object.values(pinned).reduce((a, b) => a + b, 0);

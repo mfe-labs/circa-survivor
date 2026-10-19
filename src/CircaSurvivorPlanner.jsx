@@ -778,6 +778,11 @@ function availabilityRaw(legId, data) {
 // residuals on past weeks against the model's measured errors), and everyone else's model share is scaled to
 // fill the rest. A Thursday final sets that game's win chance to 0/1.
 const SPLASH_GAMMA = 1.2, SPLASH_ERR_TOP = 0.06, SPLASH_ERR_OTHER = 0.3, SPLASH_PSEUDO = 3;
+// A Thursday team the field is saving for a holiday (hold-back of more than 10%) gets at most a third of the blend
+// from Splash, whatever the track record says: that record is mostly from weeks before the two fields diverged, and
+// the hold-back correction has been checked on one week. The model carries the holiday term natively, so it leads
+// on those teams. Revisit once the correction has held for two more weeks (set 2026-10-19).
+const SPLASH_HOLD_CUT = 0.9, SPLASH_HOLD_W = 1 / 3;
 // how far the mapping has missed Circa on past weeks: log SD of actual ÷ mapped, for the week's top Splash pick and
 // for everyone else, shrunk toward the defaults while few weeks exist
 function splashError(data) {
@@ -827,20 +832,22 @@ function splashAnchor(legId, data) {
   const th = data.splash?.weeks?.[legId]?.thursday;
   if (!th?.picks || !th.alive || data.actuals?.[legId]) return null;
   const g = data.splash?.mapping?.gamma ?? SPLASH_GAMMA, Z = splashZ(data), shares = {}, raw = {};
+  const cut = splashHoliday(legId, data).cut;
   for (const [t, n] of Object.entries(th.picks)) { raw[t] = n / th.alive; shares[t] = splashMap(legId, t, raw[t], data); }
-  return { shares, raw, final: th.final || {}, alive: th.alive, asOf: th.asOf || null, gamma: g, Z, err: splashError(data) };
+  return { shares, raw, cut, final: th.final || {}, alive: th.alive, asOf: th.asOf || null, gamma: g, Z, err: splashError(data) };
 }
 // blend each Thursday team's mapped share with the model's, weighted by inverse variance in log space
 const blendAnchor = (anchor, model, params) => {
-  const shares = {}, w = {}, sd = {};
+  const shares = {}, w = {}, sd = {}, held = {};
   for (const [t, mapped] of Object.entries(anchor.shares)) {
     const chalk = mapped >= 0.15, ss = chalk ? anchor.err.top : anchor.err.other, sm = chalk ? (params?.errTop ?? MODEL_ERR_TOP) : (params?.errOther ?? MODEL_ERR);
     const pm = model[t] || 0, ps = Math.max(mapped, 0.0005);
     // a team the model gives nothing (an underdog it never scores) takes the mapped share outright: the model has no opinion to blend
-    const wt = pm < 0.001 ? 1 : sm * sm / (sm * sm + ss * ss);
+    held[t] = (anchor.cut?.[t] ?? 1) < SPLASH_HOLD_CUT;
+    const wt = pm < 0.001 ? 1 : Math.min(held[t] ? SPLASH_HOLD_W : 1, sm * sm / (sm * sm + ss * ss));
     shares[t] = Math.min(0.95, Math.exp(wt * Math.log(ps) + (1 - wt) * Math.log(Math.max(pm, 0.0005)))); w[t] = wt; sd[t] = pm < 0.001 ? ss : Math.sqrt(1 / (1 / (ss * ss) + 1 / (sm * sm)));
   }
-  return { ...anchor, blended: shares, w, sd };
+  return { ...anchor, blended: shares, w, sd, held };
 };
 // pin the blended shares and scale the rest to fill what is left; with rng, draw the blend's own error
 const applyAnchor = (blend, p, rng = null) => {
@@ -1004,7 +1011,7 @@ export function entryStatus(entry, actualLegs) {
   return { alive: true, leg: null };
 }
 
-export { splashMap, holidayFreeze, spotWeight, seasonTable, mapLegs, expWin, survivalPath, capShares, projectField, lineFor, modelPickRange, fvAt, bandError, strengthWeight, futureFor, marketLine, splashAnchor, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
+export { blendAnchor, splashMap, holidayFreeze, spotWeight, seasonTable, mapLegs, expWin, survivalPath, capShares, projectField, lineFor, modelPickRange, fvAt, bandError, strengthWeight, futureFor, marketLine, splashAnchor, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
 
 const CSS = `
 /* ---- tokens: paper, ink, one green ---- */
@@ -1650,7 +1657,7 @@ export default function CircaSurvivorPlanner() {
     const anchor = splashAnchor(legId, data);
     const finals = decidedGames(legId, act, anchor);
     for (const [t, f] of Object.entries(finals)) { if (!rows[t]) continue; rows[t].win = f === "W" ? 1 : 0; rows[t].final = f; rows[t].status = "final"; }
-    if (anchor) { const bl = blendAnchor(anchor, modelRaw, params); for (const t of Object.keys(anchor.shares)) { rows[t].anchor = bl.blended[t]; rows[t].anchorMap = anchor.shares[t]; rows[t].anchorW = bl.w[t]; rows[t].anchorRaw = anchor.raw[t]; rows[t].anchorAlive = anchor.alive; } }
+    if (anchor) { const bl = blendAnchor(anchor, modelRaw, params); for (const t of Object.keys(anchor.shares)) { rows[t].anchor = bl.blended[t]; rows[t].anchorMap = anchor.shares[t]; rows[t].anchorW = bl.w[t]; rows[t].anchorHeld = bl.held[t]; rows[t].anchorRaw = anchor.raw[t]; rows[t].anchorAlive = anchor.alive; } }
     const ev = computeEV(legId, rows);
     for (const t of Object.keys(finals)) if (rows[t]) { rows[t].ev = null; rows[t].raw = null; }
     for (const t of ALL_TEAMS) rows[t].fv = data.ratings || act?.fv ? fvAt(legId, t, data) : null;
@@ -1729,6 +1736,9 @@ export default function CircaSurvivorPlanner() {
     return null;
   })();
   const pulled = data.oddsAt ? `Lines updated ${fmtTime(data.oddsAt)}` : null;
+  // the Thursday teams two ways, model alone and with Splash, so a disagreement is seen rather than averaged away
+  const spNote = (() => { const th = Object.keys(OPP[legId] || {}).filter((t) => stats[t]?.anchor != null); if (!th.length) return null;
+    return "Thursday (Splash): " + th.map((t) => `${t} model ${pctP(stats[t].pm)} · Splash ${pctP(stats[t].anchorMap)} · blended ${pctP(stats[t].anchor)}${stats[t].anchorHeld ? " (holiday team, Splash capped at ⅓)" : ""}`).join(" · "); })();
   const lineNote = (() => {
     if (circaNote) return circaNote;
     if (!legInfo) return "No lines yet for this week";
@@ -1801,7 +1811,7 @@ export default function CircaSurvivorPlanner() {
             </div>
             <div className="row">
               {canEdit && <button className="btn" onClick={updateLines} disabled={updating} title="Pull fresh moneylines from the sportsbooks now (otherwise twice a day)">{updating ? "Updating…" : "Update lines"}</button>}
-              <span className={"note" + (status ? (statusErr ? " err" : " msg") : "")} title={!status ? `Lines update automatically twice a day. ${stamp}` : undefined}>{!loaded ? "Loading…" : status || <>{lineNote}{pulled && <span className="sub">{pulled}</span>}{simCurrent && !simNow && <span className="sub">Forfeits provisional: the playouts are running…</span>}</>}</span>
+              <span className={"note" + (status ? (statusErr ? " err" : " msg") : "")} title={!status ? `Lines update automatically twice a day. ${stamp}` : undefined}>{!loaded ? "Loading…" : status || <>{lineNote}{pulled && <span className="sub">{pulled}</span>}{simCurrent && !simNow && <span className="sub">Forfeits provisional: the playouts are running…</span>}{spNote && <span className="sub">{spNote}</span>}</>}</span>
             </div>
           </div>
         </div>
@@ -1836,7 +1846,7 @@ export default function CircaSurvivorPlanner() {
               return (
                 <tr key={team} className={usedLeg && usedLeg !== legId ? "gone" : ""}>
                   <td className={"L wp num" + (st.win == null ? " blank" : st.final ? " fin" : st.winTop ? " hi" : "") + (st.status === "single" || st.status === "degraded" ? " weak" : "")} title={inLeg ? (st.win == null ? "No two-sided moneyline posted yet for this game" : `${pct(st.win)} — ${STATUS_TEXT[st.status]}${st.status !== "closing" ? ` (${st.n})` : ""} · e.g. ${st.refBook} ${fmtSp(st.ml)} / ${fmtSp(st.oppMl)}${st.dWin != null ? dTip("was", pct(st.win - st.dWin)) : ""}`) : ""}><Num d={st.final ? null : st.dWin} kind="pct">{inLeg ? (st.final ? (st.final === "W" ? "100%" : "0%") : pct(st.win)) : "–"}</Num></td>
-                  <td className={"L pp num" + (st.pick == null ? " blank" : st.pick > 0.099 ? " warn" : "")} title={inLeg ? (st.act ? "Circa actual" : st.anchor != null ? `Splash Thursday reading: ${pctP(st.anchorRaw)} of ${st.anchorAlive.toLocaleString()} entries → ${pctP(st.anchorMap)} by the mapping (Circa ≈ Splash^1.2), blended ${Math.round(100 * st.anchorW)}/${Math.round(100 * (1 - st.anchorW))} with the model's ${pctP(st.pm)} → ${pctP(st.anchor)}` : `field model ${pctP(st.pm)}${st.pLo != null ? ` · likely ${pr(st.pLo)}–${pr(st.pHi)} at lock (middle half of outcomes, given line movement and how far the model has missed so far)` : ""}${st.dPick != null ? dTip("was", pct(st.pick - st.dPick)) : ""}`) : ""}><Num d={st.dPick} kind={st.pick != null && st.pick < 0.0995 ? "pct1" : "pct"}>{inLeg ? pctP(st.pick) : "–"}</Num></td>
+                  <td className={"L pp num" + (st.pick == null ? " blank" : st.pick > 0.099 ? " warn" : "")} title={inLeg ? (st.act ? "Circa actual" : st.anchor != null ? `Splash Thursday reading: ${pctP(st.anchorRaw)} of ${st.anchorAlive.toLocaleString()} entries → ${pctP(st.anchorMap)} by the mapping (Circa ≈ Splash^1.2, less the holiday hold-back), blended ${Math.round(100 * st.anchorW)}/${Math.round(100 * (1 - st.anchorW))} with the model's ${pctP(st.pm)} → ${pctP(st.anchor)}${st.anchorHeld ? " · holiday team: Splash capped at a third of the blend" : ""}` : `field model ${pctP(st.pm)}${st.pLo != null ? ` · likely ${pr(st.pLo)}–${pr(st.pHi)} at lock (middle half of outcomes, given line movement and how far the model has missed so far)` : ""}${st.dPick != null ? dTip("was", pct(st.pick - st.dPick)) : ""}`) : ""}><Num d={st.dPick} kind={st.pick != null && st.pick < 0.0995 ? "pct1" : "pct"}>{inLeg ? pctP(st.pick) : "–"}</Num></td>
                   <td className={"L fv num" + (st.fv == null ? " blank" : Math.round(st.fv * 10) / 10 <= 2 ? " hi" : "")} title={st.fv == null ? "No power ratings yet" : st.fvRaw != null ? `About ${st.fv.toFixed(1)} strong-favorite weeks left that this entry would use: ${st.fvRaw.toFixed(1)} for the team on its own, ${st.fvEntry.toFixed(1)} counted against the teams you still hold, blended ${Math.round(100 * st.fvW)}/${Math.round(100 * (1 - st.fvW))}${st.forfeit != null && Number.isFinite(st.forfeit) ? ` · costs this entry ${Math.round(100 * (st.forfeit - 1))}% to spend` : ""}` : `About ${st.fv.toFixed(1)} strong-favorite weeks left after this one (a 75% spot counts ~1, 65% counts ½, 55% a little)`}>
                     <span className="v"><span className="n">{st.fv == null ? "–" : st.fv.toFixed(1)}</span></span>
                   </td>
@@ -1905,7 +1915,7 @@ function AuditPanel({ legId, data, params, merr, stats, evNote, map }) {
         <div className="sec">
           <h4>P% — pick popularity</h4>
           {act ? <p>Locked week: P% is Circa's posted distribution.</p>
-            : <p>Field model <code>win^{params.a} × e^(−{params.b} × future value) × e^(−{params.c ?? 0} × holiday pressure) × availability</code>, normalized over favored teams. Fit on {params.legs} week{params.legs === 1 ? "" : "s"} of Circa actuals, weighting each team's miss by its share{merr ? <>; average miss so far {pc(merr.err)} per team</> : null}. Holiday pressure is how good a team's Thanksgiving or Christmas spot looks, as a share of the good holiday spots the field still holds, and how close the holiday is; its weight is set from the 2024 and 2025 Circa fields, because early in a season the field's holiday saving is too small to measure until it has already happened. The fit uses each past week's future values as they stood at that week's lock, not today's.{(() => { const an = splashAnchor(legId, data); return an ? ` Splash's Thursday reading for this week: ${Object.entries(an.raw).map(([t, v]) => `${t} ${(100 * v).toFixed(1)}%`).join(", ")} of ${an.alive.toLocaleString()} entries, mapped to ${Object.entries(an.shares).map(([t, v]) => `${t} ${(100 * v).toFixed(0)}%`).join(", ")} (Circa ≈ Splash^${an.gamma}, less the holiday hold-back), then blended with the model by how wrong each has been so far (mapping ×${Math.exp(an.err.top).toFixed(2)} on the top pick over ${an.err.nTop} weeks, model ×${Math.exp(params.errTop ?? 0.1).toFixed(2)}), and the rest of the field is scaled to fit${Object.keys(an.final).length ? `; the Thursday game is final (${Object.entries(an.final).map(([t, f]) => `${t} ${f === "W" ? "won" : "lost"}`).join(", ")})` : ""}.` : ""; })()} The P% band re-runs the model over line movement and the model's own misses so far: a factor of about ×{Math.exp(params.errTop ?? 0.1).toFixed(2)} on its top pick and ×{Math.exp(params.errOther ?? 0.35).toFixed(2)} on everyone else, measured on {params.nTop ?? 0} weeks.</p>}
+            : <p>Field model <code>win^{params.a} × e^(−{params.b} × future value) × e^(−{params.c ?? 0} × holiday pressure) × availability</code>, normalized over favored teams. Fit on {params.legs} week{params.legs === 1 ? "" : "s"} of Circa actuals, weighting each team's miss by its share{merr ? <>; average miss so far {pc(merr.err)} per team</> : null}. Holiday pressure is how good a team's Thanksgiving or Christmas spot looks, as a share of the good holiday spots the field still holds, and how close the holiday is; its weight is set from the 2024 and 2025 Circa fields, because early in a season the field's holiday saving is too small to measure until it has already happened. The fit uses each past week's future values as they stood at that week's lock, not today's.{(() => { const an = splashAnchor(legId, data); return an ? ` Splash's Thursday reading for this week: ${Object.entries(an.raw).map(([t, v]) => `${t} ${(100 * v).toFixed(1)}%`).join(", ")} of ${an.alive.toLocaleString()} entries, mapped to ${Object.entries(an.shares).map(([t, v]) => `${t} ${(100 * v).toFixed(0)}%`).join(", ")} (Circa ≈ Splash^${an.gamma}, less the holiday hold-back), then blended with the model by how wrong each has been so far (mapping ×${Math.exp(an.err.top).toFixed(2)} on the top pick over ${an.err.nTop} weeks, model ×${Math.exp(params.errTop ?? 0.1).toFixed(2)}), and the rest of the field is scaled to fit. Two ways, so a disagreement shows: ${Object.keys(an.shares).map((t) => `${t} model ${pc(stats[t]?.pm)}, Splash ${pc(stats[t]?.anchorMap)}, blended ${pc(stats[t]?.anchor)} (Splash ${Math.round(100 * (stats[t]?.anchorW ?? 0))}%${stats[t]?.anchorHeld ? ", capped at a third: holiday team" : ""})`).join("; ")}${Object.keys(an.final).length ? `; the Thursday game is final (${Object.entries(an.final).map(([t, f]) => `${t} ${f === "W" ? "won" : "lost"}`).join(", ")})` : ""}.` : ""; })()} The P% band re-runs the model over line movement and the model's own misses so far: a factor of about ×{Math.exp(params.errTop ?? 0.1).toFixed(2)} on its top pick and ×{Math.exp(params.errOther ?? 0.35).toFixed(2)} on everyone else, measured on {params.nTop ?? 0} weeks.</p>}
         </div>
         <div className="sec">
           <h4>DILI — do I love it?</h4>
