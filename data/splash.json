@@ -172,6 +172,30 @@
      "DEN": "W",
      "SEA": "L"
     }
+   },
+   "survived": 1019,
+   "eliminated": 1459,
+   "missed": 3,
+   "pending": {
+    "SF": 82
+   },
+   "picks": {
+    "LAR": 1023,
+    "NE": 513,
+    "IND": 416,
+    "KC": 220,
+    "CAR": 160,
+    "SF": 82,
+    "PIT": 16,
+    "BUF": 14,
+    "BAL": 10,
+    "NO": 10,
+    "NYG": 4,
+    "ATL": 2,
+    "GB": 2,
+    "DEN": 1,
+    "CLE": 1,
+    "TB": 1
    }
   }
  }
