@@ -77,7 +77,7 @@ each with its own pick. Each team once per entry. Tie = loss. Schedule is hard-c
   snapshot, the earliest). `fvAt(leg, team, data)` returns the frozen value for a locked leg, else `fvFor`, and the
   popularity model and the past-week board use it, so later ratings moves cannot rewrite what the field saw.
 - **Splash anchor**: when the current week has a Thursday reading, `splashAnchor` maps each Thursday team's share
-  through share^γ ÷ Z (γ = `mapping.gamma` 1.2, Z = mean Σ share^γ over complete Splash weeks); `blendAnchor`
+  through share^γ × e^(−c·hp) ÷ (Z × scale) (`splashMap`: γ = `mapping.gamma` 1.2, Z = mean Σ share^γ over complete Splash weeks; the holiday cut is the model's own, because Splash has no holiday weeks and its field saves nothing for them, and `scale` is how much of the week's field that cut removes, measured on the model's c = 0 field. 2026 W6: Rams Splash 41% → plain 47%, held back 38%, Circa 31%; NE and IND within 2 pts, were 8 low); `blendAnchor`
   mixes that with the model's share by inverse variance in log space (`splashError`: the mapping's log residuals on
   complete weeks, top pick vs others, shrunk toward 0.06 / 0.30; the model's `errTop` / `errOther`), and
   `applyAnchor` pins the blend in `modelPick`, the forward field and the band draws (jittered by the blend's SD),

@@ -789,7 +789,7 @@ function splashError(data) {
       const best = Object.keys(w.picks).sort((a, b) => w.picks[b] - w.picks[a])[0];
       for (const [t, c] of Object.entries(w.picks)) {
         const sp = c / n, ci = (act.picks[t] || 0) / tot; if (sp < 0.01 || ci < 0.01) continue;
-        (t === best ? top : other).push(Math.log(ci) - Math.log(Math.min(0.9, Math.pow(sp, g) / Z)));
+        (t === best ? top : other).push(Math.log(ci) - Math.log(splashMap(id, t, sp, data)));
       }
     }
     const sd = (xs, d0) => Math.min(0.6, Math.max(0.03, Math.sqrt((xs.reduce((a, x) => a + x * x, 0) + SPLASH_PSEUDO * d0 * d0) / (xs.length + SPLASH_PSEUDO))));
@@ -803,11 +803,31 @@ function splashZ(data) {
     return zs.length ? zs.reduce((a, b) => a + b, 0) / zs.length : 0.72;
   });
 }
+// Splash has no Thanksgiving or Christmas weeks, so its field never saves a team for them; Circa's does. Before a
+// Splash share is mapped, it is cut by the same holiday hold-back the model applies to Circa's field (e^(−c × holiday
+// pressure)), and the normaliser is scaled by how much of the week's field that cut removes, estimated on the model's
+// own field with the holiday term off (a stand-in for Splash's). With no holiday pressure anywhere this is the plain
+// mapping exactly. 2026 Week 6: Splash had the Rams at 41%; the plain mapping said Circa 47%, this says 38%, Circa
+// was 31%; the Patriots and Colts land within 2 points where the plain mapping was 8 low on each. A locked week reads the holiday lines frozen at its lock, like everything else about it.
+function splashHoliday(legId, data) {
+  return cached(data, "sph", legId, () => {
+    const g = data.splash?.mapping?.gamma ?? SPLASH_GAMMA, av = availability(legId, data), cut = {};
+    const m0 = modelPick(legId, data, { a: PRIOR.a, b: PRIOR.b, c: 0 }, true);
+    let num = 0, den = 0;
+    for (const t of Object.keys(OPP[legId])) { cut[t] = Math.exp(-HOLIDAY_C * holidayPressure(legId, t, data, av)); const w = Math.pow(m0[t] || 0, g); num += w * cut[t]; den += w; }
+    return { cut, scale: den > 0 ? num / den : 1 };
+  });
+}
+// one team's Splash share (0–1) mapped to a Circa share: Splash^γ, less the holiday hold-back, over the normaliser
+function splashMap(legId, team, sp, data) {
+  const g = data.splash?.mapping?.gamma ?? SPLASH_GAMMA, Z = splashZ(data), h = splashHoliday(legId, data);
+  return Math.min(0.9, Math.pow(sp, g) * (h.cut[team] ?? 1) / (Z * h.scale));
+}
 function splashAnchor(legId, data) {
   const th = data.splash?.weeks?.[legId]?.thursday;
   if (!th?.picks || !th.alive || data.actuals?.[legId]) return null;
   const g = data.splash?.mapping?.gamma ?? SPLASH_GAMMA, Z = splashZ(data), shares = {}, raw = {};
-  for (const [t, n] of Object.entries(th.picks)) { raw[t] = n / th.alive; shares[t] = Math.min(0.9, Math.pow(raw[t], g) / Z); }
+  for (const [t, n] of Object.entries(th.picks)) { raw[t] = n / th.alive; shares[t] = splashMap(legId, t, raw[t], data); }
   return { shares, raw, final: th.final || {}, alive: th.alive, asOf: th.asOf || null, gamma: g, Z, err: splashError(data) };
 }
 // blend each Thursday team's mapped share with the model's, weighted by inverse variance in log space
@@ -984,7 +1004,7 @@ export function entryStatus(entry, actualLegs) {
   return { alive: true, leg: null };
 }
 
-export { holidayFreeze, spotWeight, seasonTable, mapLegs, expWin, survivalPath, capShares, projectField, lineFor, modelPickRange, fvAt, bandError, strengthWeight, futureFor, marketLine, splashAnchor, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
+export { splashMap, holidayFreeze, spotWeight, seasonTable, mapLegs, expWin, survivalPath, capShares, projectField, lineFor, modelPickRange, fvAt, bandError, strengthWeight, futureFor, marketLine, splashAnchor, linesFromOdds, consensusForGame, computeEV, EV_MIN_COVERAGE, buildData, devig, fieldTimeline, modelPick, fitParams, availability, fvFor, holidayPressure };
 
 const CSS = `
 /* ---- tokens: paper, ink, one green ---- */
@@ -1885,7 +1905,7 @@ function AuditPanel({ legId, data, params, merr, stats, evNote, map }) {
         <div className="sec">
           <h4>P% — pick popularity</h4>
           {act ? <p>Locked week: P% is Circa's posted distribution.</p>
-            : <p>Field model <code>win^{params.a} × e^(−{params.b} × future value) × e^(−{params.c ?? 0} × holiday pressure) × availability</code>, normalized over favored teams. Fit on {params.legs} week{params.legs === 1 ? "" : "s"} of Circa actuals, weighting each team's miss by its share{merr ? <>; average miss so far {pc(merr.err)} per team</> : null}. Holiday pressure is how good a team's Thanksgiving or Christmas spot looks, as a share of the good holiday spots the field still holds, and how close the holiday is; its weight is set from the 2024 and 2025 Circa fields, because early in a season the field's holiday saving is too small to measure until it has already happened. The fit uses each past week's future values as they stood at that week's lock, not today's.{(() => { const an = splashAnchor(legId, data); return an ? ` Splash's Thursday reading for this week: ${Object.entries(an.raw).map(([t, v]) => `${t} ${(100 * v).toFixed(1)}%`).join(", ")} of ${an.alive.toLocaleString()} entries, mapped to ${Object.entries(an.shares).map(([t, v]) => `${t} ${(100 * v).toFixed(0)}%`).join(", ")} (Circa ≈ Splash^${an.gamma}), then blended with the model by how wrong each has been so far (mapping ×${Math.exp(an.err.top).toFixed(2)} on the top pick over ${an.err.nTop} weeks, model ×${Math.exp(params.errTop ?? 0.1).toFixed(2)}), and the rest of the field is scaled to fit${Object.keys(an.final).length ? `; the Thursday game is final (${Object.entries(an.final).map(([t, f]) => `${t} ${f === "W" ? "won" : "lost"}`).join(", ")})` : ""}.` : ""; })()} The P% band re-runs the model over line movement and the model's own misses so far: a factor of about ×{Math.exp(params.errTop ?? 0.1).toFixed(2)} on its top pick and ×{Math.exp(params.errOther ?? 0.35).toFixed(2)} on everyone else, measured on {params.nTop ?? 0} weeks.</p>}
+            : <p>Field model <code>win^{params.a} × e^(−{params.b} × future value) × e^(−{params.c ?? 0} × holiday pressure) × availability</code>, normalized over favored teams. Fit on {params.legs} week{params.legs === 1 ? "" : "s"} of Circa actuals, weighting each team's miss by its share{merr ? <>; average miss so far {pc(merr.err)} per team</> : null}. Holiday pressure is how good a team's Thanksgiving or Christmas spot looks, as a share of the good holiday spots the field still holds, and how close the holiday is; its weight is set from the 2024 and 2025 Circa fields, because early in a season the field's holiday saving is too small to measure until it has already happened. The fit uses each past week's future values as they stood at that week's lock, not today's.{(() => { const an = splashAnchor(legId, data); return an ? ` Splash's Thursday reading for this week: ${Object.entries(an.raw).map(([t, v]) => `${t} ${(100 * v).toFixed(1)}%`).join(", ")} of ${an.alive.toLocaleString()} entries, mapped to ${Object.entries(an.shares).map(([t, v]) => `${t} ${(100 * v).toFixed(0)}%`).join(", ")} (Circa ≈ Splash^${an.gamma}, less the holiday hold-back), then blended with the model by how wrong each has been so far (mapping ×${Math.exp(an.err.top).toFixed(2)} on the top pick over ${an.err.nTop} weeks, model ×${Math.exp(params.errTop ?? 0.1).toFixed(2)}), and the rest of the field is scaled to fit${Object.keys(an.final).length ? `; the Thursday game is final (${Object.entries(an.final).map(([t, f]) => `${t} ${f === "W" ? "won" : "lost"}`).join(", ")})` : ""}.` : ""; })()} The P% band re-runs the model over line movement and the model's own misses so far: a factor of about ×{Math.exp(params.errTop ?? 0.1).toFixed(2)} on its top pick and ×{Math.exp(params.errOther ?? 0.35).toFixed(2)} on everyone else, measured on {params.nTop ?? 0} weeks.</p>}
         </div>
         <div className="sec">
           <h4>DILI — do I love it?</h4>

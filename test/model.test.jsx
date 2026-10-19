@@ -1,5 +1,5 @@
 // Field timeline + popularity model on the real data files.
-import { buildData, fieldTimeline, modelPick, modelPickRange, fitParams, availability, fvAt, splashAnchor, computeEV, capShares, projectField, lineFor, spotWeight } from "../src/CircaSurvivorPlanner.jsx";
+import { buildData, fieldTimeline, modelPick, modelPickRange, fitParams, availability, fvAt, splashAnchor, splashMap, holidayPressure, computeEV, capShares, projectField, lineFor, spotWeight } from "../src/CircaSurvivorPlanner.jsx";
 import { OPP, LEGS } from "../src/schedule.js";
 import picks from "../data/picks.json";
 import actuals from "../data/actuals.json";
@@ -56,7 +56,12 @@ ok("fitParams returns a,b", Number.isFinite(params.a) && Number.isFinite(params.
   const T = scored[0];
   const fake = { mapping: { gamma: 1.2 }, weeks: { ...splash.weeks, [open]: { thursday: { alive: 5000, picks: { [T]: 1900 }, final: { [T]: "L" } } } } };
   const d = buildData({ picks, actuals, odds, ratings, splash: fake }), an = splashAnchor(open, d);
-  ok("anchor maps the Thursday share through the power rule", an && Math.abs(an.shares[T] - Math.pow(0.38, 1.2) / an.Z) < 1e-9 && an.Z > 0.6 && an.Z < 0.85, `38% → ${(100 * an.shares[T]).toFixed(1)}% with Z ${an.Z.toFixed(3)}`);
+  ok("anchor maps the Thursday share through the power rule, less the holiday hold-back", an && Math.abs(an.shares[T] - splashMap(open, T, 0.38, d)) < 1e-9 && an.Z > 0.6 && an.Z < 0.85, `38% → ${(100 * an.shares[T]).toFixed(1)}% with Z ${an.Z.toFixed(3)}`);
+  // Splash's field saves nothing for the holidays, so a team under no holiday pressure maps at or above the plain
+  // power rule (the normaliser shrinks with everyone else's hold-back) and a pressed team maps below it
+  const free = Object.keys(OPP[open]).find((x) => holidayPressure(open, x, d, availability(open, d)) === 0), pressed = Object.keys(OPP[open]).sort((x, y) => holidayPressure(open, y, d, availability(open, d)) - holidayPressure(open, x, d, availability(open, d)))[0];
+  const plainRule = (sp) => Math.pow(sp, 1.2) / an.Z;
+  ok("no holiday pressure → at or above the plain rule; the most pressed team → below it", (!free || splashMap(open, free, 0.2, d) >= plainRule(0.2) - 1e-9) && splashMap(open, pressed, 0.2, d) < plainRule(0.2), `${free}: ${(100 * splashMap(open, free, 0.2, d)).toFixed(1)} ${pressed}: ${(100 * splashMap(open, pressed, 0.2, d)).toFixed(1)} vs plain ${(100 * plainRule(0.2)).toFixed(1)}`);
   const plain = modelPick(open, data, params), pinned = modelPick(open, d, params);
   const sum = Object.values(pinned).reduce((a, b) => a + b, 0);
   const lo = Math.min(an.shares[T], Math.max(plain[T] || 0, 0.0005)), hi = Math.max(an.shares[T], Math.max(plain[T] || 0, 0.0005));
@@ -65,6 +70,12 @@ ok("fitParams returns a,b", Number.isFinite(params.a) && Number.isFinite(params.
   const other = Object.keys(plain).filter((x) => x !== T && plain[x] > 0.01);
   ok("other teams keep their proportions", other.every((x) => Math.abs(pinned[x] / plain[x] - pinned[other[0]] / plain[other[0]]) < 1e-9));
   ok("a locked week ignores the anchor", splashAnchor("W1", buildData({ picks, actuals, odds, ratings, splash: { weeks: { W1: { thursday: { alive: 10, picks: { JAX: 5 } } } } } })) === null);
+  ok("the hold-back more than halves the miss on a saved favorite and lands the overflow teams (2026 W6: Rams, Patriots, Colts)", (() => {
+    const w = splash.weeks.W6, act = actuals.legs.W6; if (!w?.picks || !act) return true;
+    const real = buildData({ picks, actuals, odds, ratings, splash }), n = w.survived + w.eliminated, tot = Object.values(act.picks).reduce((a, b) => a + b, 0);
+    const miss = (t, held) => Math.abs((held ? splashMap("W6", t, w.picks[t] / n, real) : Math.pow(w.picks[t] / n, 1.2) / an.Z) - act.picks[t] / tot);   // a locked week has no anchor, so Z comes from the open week's
+    return miss("LAR", true) < miss("LAR", false) / 2 && miss("NE", true) < 0.03 && miss("IND", true) < 0.03;
+  })());
   ok("Splash's own Z is in a sane range on the real file", (() => { const z = splashAnchor("W5", buildData({ picks, actuals, odds, ratings, splash }))?.Z; return z == null || (z > 0.6 && z < 0.85); })());
 })();
 // P% band: the model re-run over typical line movement; stable, brackets the point estimate, sane width
