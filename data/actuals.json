@@ -614,7 +614,7 @@
    }
   },
   "W6": {
-   "asOf": "Oct 18 (2 pending)",
+   "asOf": "Oct 18 (1 pending)",
    "picks": {
     "LAR": 901,
     "SF": 119,
@@ -654,12 +654,12 @@
     "BAL",
     "SEA",
     "ATL",
+    "DAL",
     "JAX",
     "NOPICK"
    ],
    "pending": [
-    "SF",
-    "DAL"
+    "SF"
    ],
    "source": "https://www.circasports.com/wp-content/uploads/2026/10/Circa-Survivor-2026-Week-6-Selections.pdf",
    "fv": {
