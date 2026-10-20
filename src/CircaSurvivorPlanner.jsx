@@ -57,7 +57,9 @@ const winFromMargin = (m) => normCdf(m / MARGIN_SD);
 // size (0.93, 0.87, 0.88, 0.90 by distance; 226 projections). PULL shrinks a projection toward even by that much, so a
 // distant favorite counts for a little less than its raw rating gap. The right size depends on how much the ratings
 // are already held back by their prior (2025, with a weaker prior, wanted the opposite), so it is rechecked midseason.
-const PULL = (lead) => (lead <= 1 ? 1 : 0.9);
+// Rechecked 2026-10-19 on Weeks 5–7 (43 games each): one week out the market closed at 0.93 of the projection, two
+// weeks out at 0.90, so the next week gets a 7% pull too. Lead 0 is the raw projection (future value, holiday lines).
+const PULL = (lead) => (lead <= 0 ? 1 : lead === 1 ? 0.93 : 0.9);
 // spread from this team's perspective (negative = favorite), and win prob, projected from power ratings
 function projected(legId, team, ratings, lead = 1) {
   const g = OPP[legId][team];
@@ -194,7 +196,7 @@ function buildData({ picks, actuals, odds, ratings, splash = null }, withPrev = 
 function lineFor(legId, team, data, raw = false) {
   const live = data?.legs?.[legId]?.lines?.[team];
   if (live) return { ...live, proj: false };
-  return projected(legId, team, data?.ratings, raw ? 1 : LEGS.findIndex((l) => l.id === legId) - lockedIdx(data) + 1);
+  return projected(legId, team, data?.ratings, raw ? 0 : LEGS.findIndex((l) => l.id === legId) - lockedIdx(data) + 1);
 }
 function marketLine(legId, team, data) {
   const ln = data?.legs?.[legId]?.lines?.[team];
