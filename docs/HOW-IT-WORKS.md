@@ -41,6 +41,15 @@ each with its own pick. Each team once per entry. Tie = loss. Schedule is hard-c
   both backtested on 2025–26 closing lines, `restEdge` in schedule.js); a ridge fit solves
   for one number per team, shrunk toward the Super Bowl futures prior (λ = 2). Recent games count more: a line's
   weight halves every 3 weeks back (backtested on 2025–26 closing spreads; equal weights were worst in every test).
+  That market fit is one of three sources: the `ratings` the app reads are a blend (`blendRatings`, `SOURCE_WEIGHTS`
+  in ratings.js) of the market fit, ESPN's FPI (public JSON, built from play-by-play efficiency, independent of
+  betting lines) and nfelo (Elo with quarterback adjustments, `pts_vs_avg` from its GitHub `elo_snapshot.csv`), each
+  centred on 0 and weighted equal thirds since 2026-10-20 (one week out vs. closes: nfelo 1.64 pts vs ours 2.03 on
+  Weeks 4–6 but 80% error-correlated; FPI 1.20 vs ours 1.31 on the Week 7 check and the pair averaged about 1.0;
+  nfelo trailed that week, so no source has earned more than a third yet). The job stores every source in
+  `ratings.json` (`market`, `sources.fpi`, `sources.nfelo`, `weights`); a source that fails to fetch keeps its last
+  copy for 4 days, then drops out and the rest renormalise. Refit the weights from the file's git history once three
+  weeks of forward snapshots exist (about Week 10), and recheck `PULL` then, since it was sized on the market fit alone.
   Ratings project spreads for every future cell (italic) and drive the Future column; spread → win chance is
   Φ(spread ÷ 11.5), calibrated to closing moneylines (`MARGIN_SD`). Projections are pulled toward even by lead
   (`PULL`: ×0.93 the next leg, ×0.9 two or more legs out, ×1 for the raw lead-0 projection future value and holiday lines use; next-leg size from Weeks 5–7, 43 games; slope of close on projection 0.90 over 226 2026 projections with the

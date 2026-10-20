@@ -39,6 +39,33 @@ export function fitRatings(games, { lambda = 2, prior = {} } = {}) {
   return { ratings, games: used };
 }
 
+// Blend of rating sources, all on the same scale (points vs. an average team): our market fit, ESPN's FPI
+// (built from play-by-play efficiency, independent of betting lines) and nfelo (an Elo with quarterback adjustments).
+// Opening weights (2026-10-20) are equal thirds: on the evidence so far no source has earned more than the others —
+// one week out vs. closing lines nfelo's pure model beat ours on Weeks 4–6 (1.64 vs 2.03 pts, 45 games) but its
+// errors run 80% correlated with ours; FPI beat ours on the Week 7 check (1.20 vs 1.31, 14 games) and averaging
+// the two cut the miss to about 1.0, while nfelo trailed on that same week. Each pull stores every source in
+// ratings.json, so after three weeks of snapshots the weights get refit against closes (see docs/HOW-IT-WORKS.md).
+export const SOURCE_WEIGHTS = { market: 1 / 3, fpi: 1 / 3, nfelo: 1 / 3 };
+// sources: { name: { TEAM: points } }. A source missing any team is left out and the others' weights renormalised;
+// each used source is centred on 0 first so none of them shifts the whole league.
+export function blendRatings(sources, weights = SOURCE_WEIGHTS) {
+  const used = {};
+  for (const [name, w] of Object.entries(weights)) {
+    const r = sources?.[name];
+    if (w > 0 && r && ALL_TEAMS.every((t) => Number.isFinite(r[t]))) used[name] = w;
+  }
+  const tot = Object.values(used).reduce((a, b) => a + b, 0);
+  if (!tot) return { ratings: null, used: {} };
+  const ratings = Object.fromEntries(ALL_TEAMS.map((t) => [t, 0]));
+  for (const name of Object.keys(used)) {
+    const r = sources[name], mean = ALL_TEAMS.reduce((s, t) => s + r[t], 0) / ALL_TEAMS.length;
+    for (const t of ALL_TEAMS) ratings[t] += (used[name] / tot) * (r[t] - mean);
+  }
+  for (const t of ALL_TEAMS) ratings[t] = Math.round(ratings[t] * 10) / 10;
+  return { ratings, used: Object.fromEntries(Object.entries(used).map(([k, w]) => [k, w / tot])) };
+}
+
 // Prior from the Super Bowl futures market: the market's own view of how good each team is THIS season.
 // probs: { ABBR: implied title probability }. Mapped to the points scale by standardizing log-odds.
 export const PRIOR_SCALE = 3.5;

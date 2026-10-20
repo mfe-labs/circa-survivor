@@ -1,10 +1,10 @@
 // Fit power ratings from market spreads: nflverse closing lines for every 2026 game that has one,
 // plus the current DraftKings spreads in data/odds.json for games nflverse hasn't lined yet.
 import { readFileSync, writeFileSync } from "node:fs";
-import { fitRatings, priorFromFutures } from "../src/ratings.js";
+import { fitRatings, priorFromFutures, blendRatings } from "../src/ratings.js";
 import { loadGames } from "./nflverse.mjs";
-import { fetchRetry } from "./http.mjs";
-import { ABBR, restEdge } from "../src/schedule.js";
+import { fetchRetry, fetchOrNull } from "./http.mjs";
+import { ABBR, ALL_TEAMS, norm, restEdge } from "../src/schedule.js";
 
 const OUT = new URL("../data/ratings.json", import.meta.url);
 const ODDS = new URL("../data/odds.json", import.meta.url);
@@ -61,9 +61,54 @@ try {
     games.push({ home, away, margin: -med, neutral: false, rest: restEdge(legId, home), weight: 1 });
   }
 } catch {}
-const { ratings, games: used } = fitRatings(games, { lambda: 2, prior });
+const { ratings: market, games: used } = fitRatings(games, { lambda: 2, prior });
+
+// Outside views, blended with the market fit (weights in src/ratings.js). Every pull stores each source, so this
+// file's git history is the forward record the weights get refit from. A source that cannot be fetched keeps its
+// last copy for up to STALE, then drops out of the blend until it is back.
+const STALE = 4 * 86400e3, now = new Date().toISOString();
+async function fpi() {
+  const r = await fetchOrNull("https://site.web.api.espn.com/apis/fitt/v3/sports/football/nfl/powerindex?region=us&lang=en&season=2026", {}, { label: "ESPN FPI" });
+  if (!r?.ok) throw new Error(`ESPN FPI ${r?.status ?? "unreachable"}`);
+  const j = await r.json(), out = {};
+  for (const t of j.teams || []) { const k = norm(t.team?.abbreviation), v = t.categories?.find((c) => c.name === "fpi")?.values?.[0]; if (k && Number.isFinite(v)) out[k] = v; }
+  return { asOf: j.lastUpdated || null, ratings: out };
+}
+async function nfelo() {
+  const r = await fetchOrNull("https://raw.githubusercontent.com/greerreNFL/nfelo/main/output_data/elo_snapshot.csv", {}, { label: "nfelo" });
+  if (!r?.ok) throw new Error(`nfelo ${r?.status ?? "unreachable"}`);
+  const lines = (await r.text()).trim().split("\n"), H = lines[0].split(",");
+  const is = H.indexOf("season"), iw = H.indexOf("week"), it = H.indexOf("team"), ip = H.indexOf("pts_vs_avg");
+  if (it < 0 || ip < 0) throw new Error("nfelo: columns changed");
+  const out = {}, wk = {}; let latest = 0;
+  for (const l of lines.slice(1)) {   // one row per team per rated week; a team on its bye keeps its last row
+    const c = l.split(","), k = norm(c[it]), w = +c[iw], v = +c[ip];
+    if (!k || (is >= 0 && c[is] !== "2026") || !Number.isFinite(v)) continue;
+    if (wk[k] == null || w > wk[k]) { wk[k] = w; out[k] = v; }
+    latest = Math.max(latest, w);
+  }
+  return { asOf: `after Week ${latest}`, ratings: out };
+}
+const sources = {};
+for (const [name, get] of [["fpi", fpi], ["nfelo", nfelo]]) {
+  try {
+    const s = await get();
+    const missing = ALL_TEAMS.filter((t) => !Number.isFinite(s.ratings[t]));
+    if (missing.length) throw new Error(`${name}: no rating for ${missing.join(", ")}`);
+    sources[name] = { ...s, fetchedAt: now };
+  } catch (e) {
+    const old = existing.sources?.[name];
+    if (old?.fetchedAt && Date.now() - new Date(old.fetchedAt).getTime() < STALE) { sources[name] = old; console.warn(`${name}: ${e.message}; keeping the copy from ${old.fetchedAt}`); }
+    else console.warn(`${name}: ${e.message}; left out of the blend`);
+  }
+}
+const blend = blendRatings({ market, ...Object.fromEntries(Object.entries(sources).map(([k, s]) => [k, s.ratings])) });
+const ratings = blend.ratings, weights = blend.used;
+const NAMES = { market: "market spreads", fpi: "ESPN FPI", nfelo: "nfelo" };
+const mix = Object.entries(weights).map(([k, w]) => `${NAMES[k]} ${Math.round(100 * w)}%`).join(", ");
 const prevR = existing.ratings ? { updatedAt: existing.updatedAt, ratings: existing.ratings } : null;
-writeFileSync(OUT, JSON.stringify({ updatedAt: new Date().toISOString(), prev: prevR, source: `market spreads: ${used} games this season (nflverse closing lines + current book, recent games weighted more: ${HALF_LIFE}-week half-life), anchored to the ${priorSource}`, games: used, priorSource, prior, futures, ratings }, null, 1) + "\n");
-const top = Object.entries(ratings).sort((a, b) => b[1] - a[1]);
-console.log(`ratings from ${used} games (${fromNflverse} nflverse), prior = ${priorSource}`, "top:", top.slice(0, 5).map(([t, r]) => `${t} ${r}`).join(", "), "bottom:", top.slice(-3).map(([t, r]) => `${t} ${r}`).join(", "));
-console.log("prior top:", Object.entries(prior).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([t, r]) => `${t} ${r}`).join(", "), "| SF", ratings.SF, "(prior", prior.SF + ")", "BAL", ratings.BAL, "(prior", prior.BAL + ")", "TB", ratings.TB);
+writeFileSync(OUT, JSON.stringify({ updatedAt: now, prev: prevR, source: `blend of ${mix}; the market fit uses ${used} games this season (nflverse closing lines + current book, recent games weighted more: ${HALF_LIFE}-week half-life), anchored to the ${priorSource}`, games: used, priorSource, prior, futures, weights, market, sources, ratings }, null, 1) + "\n");
+const show = (r) => { const top = Object.entries(r).sort((a, b) => b[1] - a[1]); return `top ${top.slice(0, 4).map(([t, v]) => `${t} ${v}`).join(", ")} | bottom ${top.slice(-3).map(([t, v]) => `${t} ${v}`).join(", ")}`; };
+console.log(`market fit from ${used} games (${fromNflverse} nflverse), prior = ${priorSource}:`, show(market));
+for (const [k, s] of Object.entries(sources)) console.log(`${NAMES[k]} (${s.asOf}):`, show(Object.fromEntries(Object.entries(s.ratings).map(([t, v]) => [t, Math.round(v * 10) / 10]))));
+console.log(`blend (${mix}):`, show(ratings));

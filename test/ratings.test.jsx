@@ -1,5 +1,6 @@
 // Power-rating fit recovers known ratings from synthetic spreads, and shrinks with no data.
-import { fitRatings, HFA } from "../src/ratings.js";
+import { fitRatings, blendRatings, SOURCE_WEIGHTS, HFA } from "../src/ratings.js";
+import ratingsFile from "../data/ratings.json";
 import { restEdge, nflWeek, REST_PTS } from "../src/schedule.js";
 import { ALL_TEAMS, LEGS, OPP } from "../src/schedule.js";
 let fails = 0; const ok = (name, cond, extra = "") => { console.log(name + ":", cond ? "OK" : "FAIL", extra); if (!cond) fails++; };
@@ -31,5 +32,24 @@ ok("heavy shrinkage narrows the spread", Math.max(...Object.values(shrunk.rating
   const g = OPP[b.leg][b.t], home = g.home ? b.t : g.opp, away = g.home ? g.opp : b.t;
   const fit = fitRatings([{ home, away, neutral: g.neutral, rest: restEdge(b.leg, home), margin: (truthRest[home] || 0) - (truthRest[away] || 0) + (g.neutral ? 0 : HFA) + REST_PTS * restEdge(b.leg, home) }], { lambda: 0.001 });
   ok("the fit takes the bye edge out before rating the teams", Math.abs((fit.ratings[home] - fit.ratings[away]) - ((truthRest[home] || 0) - (truthRest[away] || 0))) < 0.05, `${home} − ${away} = ${(fit.ratings[home] - fit.ratings[away]).toFixed(2)}`);
+})();
+
+// Blend of rating sources: each centred, then weighted; a source missing a team drops out and the rest renormalise
+(() => {
+  const a = Object.fromEntries(ALL_TEAMS.map((t, i) => [t, i])), b = Object.fromEntries(ALL_TEAMS.map((t, i) => [t, 100 - 2 * i]));
+  const [t0, t1] = ALL_TEAMS;
+  const bl = blendRatings({ x: a, y: b }, { x: 0.5, y: 0.5 });
+  const mean = Object.values(bl.ratings).reduce((s, v) => s + v, 0) / ALL_TEAMS.length;
+  ok("the blend is centred on zero", Math.abs(mean) <= 0.05 + 1e-9, mean.toFixed(3));   // per-team rounding to 0.1 can leave up to 0.05
+  ok("weights apply to the centred sources", Math.abs((bl.ratings[t1] - bl.ratings[t0]) - (0.5 * 1 + 0.5 * -2)) < 0.11, `${bl.ratings[t1] - bl.ratings[t0]}`);
+  const part = { ...b }; delete part[ALL_TEAMS[5]];
+  const bl2 = blendRatings({ x: a, y: part, z: null }, { x: 1 / 3, y: 1 / 3, z: 1 / 3 });
+  ok("a source missing a team is left out and the rest renormalised", bl2.used.x === 1 && bl2.used.y == null && Math.abs(bl2.ratings[t1] - bl2.ratings[t0] - 1) < 0.11, JSON.stringify(bl2.used));
+  ok("nothing usable → no ratings", blendRatings({ x: part }, { x: 1 }).ratings === null);
+  ok("the opening weights add to one", Math.abs(Object.values(SOURCE_WEIGHTS).reduce((s, v) => s + v, 0) - 1) < 1e-9);
+  // the live file: its ratings are the blend of the sources it stores, at the weights it records
+  const src = { market: ratingsFile.market, ...Object.fromEntries(Object.entries(ratingsFile.sources || {}).map(([k, s]) => [k, s.ratings])) };
+  const live = blendRatings(src, ratingsFile.weights);
+  ok("ratings.json holds the blend of its stored sources", !!live.ratings && ALL_TEAMS.every((t) => Math.abs(live.ratings[t] - ratingsFile.ratings[t]) < 0.051), Object.entries(ratingsFile.weights || {}).map(([k, w]) => `${k} ${Math.round(100 * w)}%`).join(", "));
 })();
 if (fails) { console.log(`${fails} FAILED`); process.exit(1); }
