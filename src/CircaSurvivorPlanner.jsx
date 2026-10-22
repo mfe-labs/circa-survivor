@@ -740,34 +740,40 @@ export function simPlan(data, picks, params = PRIOR, n = SIM_PLAYOUTS) {
     return simFromScores(data, picks, params, inp, sc, scoreRounds({ ...args, lock: simNow(data, params, inp, sc).lock }));
   });
 }
-// the page's version: the engine runs in a worker; the hook returns null until this week's scores are back, then a
-// plan whose later rows fill in round by round
-const simStore = new Map(); let simWorker = null, simSeq = 0;
+// the page's version: the engine runs in a worker. The job belongs to the module, not to a component: the Planner and
+// the Map both ask for the same key, so whichever mounts first starts it and every mounted hook is told as results
+// land (this week's scores first, then one round per later week). A request for a different key while a job runs drops
+// the worker (it cannot be interrupted) and starts over; nothing restarts a job just because a component re-rendered.
+const simStore = new Map(), simSubs = new Set(); let simWorker = null, simJob = null;
 const SIM_CACHE = "csp-sim";
 const simSave = (key, sc, rounds) => { try { localStorage.setItem(SIM_CACHE, JSON.stringify({ key, scores: { base: sc.base, n: sc.n, teams: Object.fromEntries(Object.entries(sc.teams).map(([i, r]) => [i, { ...r, usage: r.usage.map((u) => Array.from(u)) }])) }, rounds })); } catch {} };
 const simLoad = (key) => { try { const c = JSON.parse(localStorage.getItem(SIM_CACHE) || "null"); return c && c.key === key && c.scores && Array.isArray(c.rounds) ? c : null; } catch { return null; } };
+const simNotify = () => { for (const f of simSubs) f((x) => x + 1); };
+function simStart(key, inp, data, picks, params) {
+  if (simJob?.key === key) return;
+  if (simJob) { simWorker?.terminate(); simWorker = null; simStore.delete(simJob.key); }
+  if (!simWorker) simWorker = new Worker(new URL("./sim.worker.js", import.meta.url), { type: "module" });
+  const job = { key, scores: null, rounds: [] }, w = simWorker; simJob = job;
+  w.onmessage = (e) => {
+    if (simJob !== job && e.data.phase !== "done") return;
+    if (e.data.phase === "scores") { job.scores = e.data; w.postMessage({ ...inp.msg, phase: "rounds", lock: simNow(data, params, inp, job.scores).lock }); }
+    else if (e.data.phase === "round") job.rounds.push(e.data.round);
+    else if (e.data.phase === "done") { if (simJob === job) simJob = null; simSave(key, job.scores, job.rounds); }
+    simStore.set(key, simFromScores(data, picks, params, inp, job.scores, job.rounds));
+    simNotify();
+  };
+  w.postMessage({ ...inp.msg, phase: "scores" });
+}
 function useSimPlan(data, picks, params, n = SIM_PLAYOUTS) {
   const inp = useMemo(() => simInputs(data, picks, params, n), [data, picks, params, n]);
   const key = inp?.key || "", [, bump] = useState(0);
   if (inp && !simStore.has(key)) { const c = simLoad(key); if (c) simStore.set(key, simFromScores(data, picks, params, inp, c.scores, c.rounds)); }
+  useEffect(() => { simSubs.add(bump); return () => { simSubs.delete(bump); }; }, []);
   useEffect(() => {
     if (!inp || simStore.has(key)) return;
     if (typeof Worker === "undefined") { simStore.set(key, simPlan(data, picks, params, n)); bump((x) => x + 1); return; }
-    if (!simWorker) simWorker = new Worker(new URL("./sim.worker.js", import.meta.url), { type: "module" });
-    const id = ++simSeq, rounds = []; let scores = null, done = false;
-    const onMsg = (e) => {
-      if (e.data.id !== id) return;
-      if (e.data.phase === "scores") { scores = e.data; simWorker.postMessage({ id, ...inp.msg, phase: "rounds", lock: simNow(data, params, inp, scores).lock }); }
-      else if (e.data.phase === "round") rounds.push(e.data.round);
-      else if (e.data.phase === "done") { done = true; simWorker.removeEventListener("message", onMsg); simSave(key, scores, rounds); }
-      simStore.set(key, simFromScores(data, picks, params, inp, scores, rounds));
-      bump((x) => x + 1);
-    };
-    simWorker.addEventListener("message", onMsg);
-    simWorker.postMessage({ id, ...inp.msg, phase: "scores" });
-    // the inputs changed mid-run: a worker cannot be interrupted, so drop it rather than queue behind the stale rounds
-    return () => { if (!simWorker) return; simWorker.removeEventListener("message", onMsg); if (!done) { simWorker.terminate(); simWorker = null; } };
-  }, [inp, key]);
+    simStart(key, inp, data, picks, params);
+  }, [key]);   // eslint-disable-line react-hooks/exhaustive-deps
   return inp ? simStore.get(key) || null : emptySim(n);
 }
 // share of the field still holding each team going into legId, from actual picks in earlier legs
