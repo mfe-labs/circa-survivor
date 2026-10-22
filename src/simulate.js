@@ -87,6 +87,35 @@ export function simulate({ z, ff = null, legs, nTeams, burned, sdLead, opp, bloc
   return { value: total / (2 * m), usage, n: 2 * m };
 }
 
+// Sequential rounds, for the Simulation map's later rows. The first round (this week) is scored by scoreCandidates and
+// its pick chosen by the caller (`lock`: the top DILI, or the entry's own pick). Then, week by week: with everything
+// picked so far spent, score every team with a game that week by the same playouts, lock in the best (win ÷ forfeit),
+// or the entry's own pick for a week it has filled, and move on. Each round runs the full set of playouts over the
+// weeks still ahead of it, as if the season had reached that week with the lines where today's projections put them
+// (the next week counts as one leg out from there). The result is one coherent path, each step chosen the way the
+// map chooses this week's pick, rather than a vote across playouts that no single playout followed.
+// onRound(round) fires as each round completes so a page can fill rows in one at a time. A round whose week has
+// nothing playable locks nothing (pick −1) and the path goes on.
+export function scoreRounds({ z, legs, nTeams, burned, sdLead, opp, n = SIM_PLAYOUTS, seed = SIM_SEED, trust = SIM_TRUST, fixed = null, lock }, onRound = null) {
+  const b = burned.slice(), fx = { ...(fixed || {}) }, rounds = [];
+  delete fx[legs[0]];
+  if (lock >= 0) b[lock] = 1;
+  for (let r = 1; r < legs.length; r++) {
+    const now = legs[r], fixedNow = fx[now] ?? null; delete fx[now];
+    if (fixedNow != null) b[fixedNow] = 0;   // scored like any other candidate for its week, then taken as given
+    const candidates = []; for (let i = 0; i < nTeams; i++) if (!b[i] && !Number.isNaN(z[now][i])) candidates.push(i);
+    const sc = scoreCandidates({ z, legs: legs.slice(r), nTeams, burned: b, sdLead, opp, candidates, n, seed, trust, fixed: fx });
+    let best = -1, bestD = -Infinity;
+    const teams = {};
+    for (const [i, t] of Object.entries(sc.teams)) { const d = t.win / Math.max(1, t.forfeit); teams[i] = { win: t.win, rest: t.rest, forfeit: t.forfeit, dili: d }; if (d > bestD) { bestD = d; best = +i; } }
+    const pick = fixedNow ?? best;
+    const round = { round: r, leg: now, base: sc.base, n: sc.n, teams, pick, fixed: fixedNow != null };
+    rounds.push(round); onRound?.(round);
+    if (pick >= 0) b[pick] = 1;
+  }
+  return rounds;
+}
+
 // Score candidates for the current leg (legs[0]): win = closing win chance now, rest = expected survival of every
 // later leg with the team spent, forfeit = rest with nothing extra spent ÷ rest with the team spent (≥ 1 means the
 // team is worth something later). Every candidate is scored on the same playout paths.

@@ -3,7 +3,7 @@ import { LEGS, ALL_TEAMS, OPP, TG_TEAMS, XM_TEAMS, legLabel, REST_PTS, restEdge,
 import { HFA } from "./ratings.js";
 import { REPO, readFile, writeFile, whoAmI, dispatchWorkflow } from "./github.js";
 import { fetchSelections, fetchResults, legFromCirca, rescore } from "./circaLive.js";
-import { scoreCandidates, SIM_PLAYOUTS, SIM_SEED } from "./simulate.js";
+import { scoreCandidates, scoreRounds, SIM_PLAYOUTS, SIM_SEED } from "./simulate.js";
 // Bundled copies of the data files (built into the site on every deploy). The page also re-reads the
 // live files from the repo on load so viewers see saves made since the last deploy.
 import picksBundled from "../data/picks.json";
@@ -689,9 +689,10 @@ function simInputs(data, picks, params, n) {
 }
 // the worker gets rows keyed by leg index; rebuild that shape for the engine
 const simArgs = (m) => { const z = {}, ff = {}, opp = {}; m.zKeys.forEach((k, j) => { z[k] = m.z[j]; opp[k] = m.opp[j]; }); ff[m.legs[0]] = m.ff; return { z, ff, legs: m.legs, nTeams: m.nTeams, burned: m.burned, sdLead: (L) => m.sdByLead[Math.min(L, m.sdByLead.length - 1)], opp, candidates: m.candidates, n: m.n, seed: m.seed, fixed: m.fixed, decidedPick: m.decidedPick, decidedWin: m.decidedWin }; };
-function simFromScores(data, picks, params, inp, sc) {
-  const { spent, tab, legIdx, msg } = inp, n = msg.n, now = legIdx[0];
-  const empty = { plan: [], currentLeg: null, winOut: 0, weakest: [], rows: {}, base: 1, samples: n, xmas: [] };
+const emptySim = (n) => ({ plan: [], currentLeg: null, winOut: 0, weakest: [], rows: {}, base: 1, samples: n, xmas: [], notes: {}, pending: 0 });
+// this week's pick from the engine's scores: the Planner's rule, EV ÷ playout forfeit, or the entry's own pick
+function simNow(data, params, inp, sc) {
+  const { spent, tab, legIdx } = inp, now = legIdx[0];
   const cur = scoreCurrentWeek(data, params, tab, new Set(spent), new Set());
   const rows = {};
   for (const [i, r] of Object.entries(sc.teams)) {
@@ -700,57 +701,74 @@ function simFromScores(data, picks, params, inp, sc) {
     rows[t] = { win: cr?.win ?? r.win, ev, forfeit, rest: r.rest, dili: ev / forfeit, usage: r.usage, oldForfeit: cr?.forfeit ?? null };
   }
   const order = Object.keys(rows).sort((a, b) => rows[b].dili - rows[a].dili), mineNow = inp.fixedAll[now] != null ? ALL_TEAMS[inp.fixedAll[now]] : null;
-  const t1 = mineNow && rows[mineNow] ? mineNow : order[0], t2 = order.find((t) => t !== t1);
-  if (!t1) return empty;
-  const r1 = rows[t1], r2 = t2 ? rows[t2] : null, l0 = LEGS[now], plan = [];
+  const t1 = mineNow && rows[mineNow] ? mineNow : order[0];
+  return { rows, order, mineNow, t1, lock: t1 ? ALL_TEAMS.indexOf(t1) : -1 };
+}
+// rounds: scoreRounds' output so far. The page fills them in as the worker posts them; a week whose round has not
+// come back yet is a pending row.
+function simFromScores(data, picks, params, inp, sc, rounds = []) {
+  const { spent, legIdx } = inp, n = sc.n ?? inp.msg.n, now = legIdx[0];
+  const { rows, order, mineNow, t1 } = simNow(data, params, inp, sc);
+  if (!t1) return emptySim(n);
+  const t2 = order.find((t) => t !== t1), r1 = rows[t1], r2 = t2 ? rows[t2] : null, l0 = LEGS[now], plan = [], notes = {};
   plan.push({ leg: l0, team: t1, win: r1.win, dili: r1.dili, forfeit: r1.forfeit, backup: t2 || null, backupWin: r2?.win ?? null, backupDili: r2?.dili ?? null, ev: true, held: 1, samples: n, fixed: t1 === mineNow, ...holidayPool(l0, spent) });
-  const before = new Set([...spent, t1]);
-  // later rows read as one path: each week shows the most-used team not already shown in an earlier row (the
-  // playouts are many different paths, so the raw per-week favorites can repeat a team)
+  // the entry's picks: what Claude would have put there (the top DILI of that week's round) and what the pick costs
+  if (t1 === mineNow && order[0]) notes[l0.id] = { claude: order[0], claudeWin: rows[order[0]].win, cost: Math.max(0, 1 - r1.dili / rows[order[0]].dili), byDili: true };
+  // later rows read as one path: each week locked in from its own round of playouts with every pick above it spent.
+  // `held` and `options` keep what today's playouts did in that week, as a note on how settled the week is.
+  const before = new Set([...spent, t1]), byLeg = Object.fromEntries(rounds.map((r) => [r.leg, r]));
+  let pending = 0;
   legIdx.slice(1).forEach((k, j) => {
-    const l = LEGS[k], u = r1.usage[j], top = ALL_TEAMS.map((t, i) => [t, u[i]]).filter(([, x]) => x > 0).sort((a, b) => b[1] - a[1]);
-    const free = top.filter(([t]) => !before.has(t)), [team, share] = free[0] || [null, 0], alt = free[1] || null;
-    plan.push({ leg: l, team, win: team ? lineFor(l.id, team, data)?.win ?? null : null, dili: null, forfeit: null, backup: alt ? alt[0] : null, backupWin: alt ? lineFor(l.id, alt[0], data)?.win ?? null : null, backupDili: null, backupHeld: alt ? alt[1] : 0, ev: false, planned: true, held: share, samples: n, options: top.slice(0, 4), fixed: inp.fixed[k] != null, ...holidayPool(l, before) });
+    const l = LEGS[k], rd = byLeg[k], u = r1.usage[j], top = ALL_TEAMS.map((t, i) => [t, u[i]]).filter(([, x]) => x > 0).sort((a, b) => b[1] - a[1]);
+    const base = { leg: l, ev: false, planned: true, samples: n, options: top.slice(0, 4), ...holidayPool(l, before) };
+    if (!rd) { pending++; plan.push({ ...base, team: null, win: null, dili: null, forfeit: null, backup: null, backupWin: null, backupDili: null, held: 0, pending: true, fixed: inp.fixed[k] != null }); return; }
+    const team = rd.pick >= 0 ? ALL_TEAMS[rd.pick] : null, sc2 = rd.teams, ord = Object.keys(sc2).sort((a, b) => sc2[b].dili - sc2[a].dili);
+    const me = rd.pick >= 0 ? sc2[rd.pick] : null, alt = ord.map((i) => ALL_TEAMS[i]).find((t) => t !== team) || null, ai = alt ? ALL_TEAMS.indexOf(alt) : -1, best = ord.length ? ALL_TEAMS[ord[0]] : null;
+    plan.push({ ...base, team, win: team ? lineFor(l.id, team, data)?.win ?? null : null, dili: me?.dili ?? null, forfeit: me?.forfeit ?? null, backup: alt, backupWin: alt ? lineFor(l.id, alt, data)?.win ?? null : null, backupDili: ai >= 0 ? sc2[ai].dili : null, held: rd.pick >= 0 ? u[rd.pick] : 0, fixed: rd.fixed });
+    if (rd.fixed && best && me) notes[l.id] = { claude: best, claudeWin: lineFor(l.id, best, data)?.win ?? null, cost: Math.max(0, 1 - me.dili / sc2[ord[0]].dili), byDili: true };
     if (team) before.add(team);
   });
-  // the entry's fixed picks: what Claude would have put there (this week: the top DILI; later: the plain survival plan
-  // without the entry's picks), and what each costs the plan
-  const notes = {};
-  if (Object.keys(inp.fixedAll).length) {
-    const bi = ALL_TEAMS.map((t) => spent.has(t)), free = survivalPath(tab, legIdx, bi), costs = fixedCosts(tab, legIdx, bi, inp.fixedAll);
-    for (const p of plan) if (p.fixed) {
-      const k = LEGS.findIndex((l) => l.id === p.leg.id), isNow = k === now, alt = isNow ? order[0] : free.find((q) => q.k === k)?.team;
-      notes[p.leg.id] = { claude: alt || null, claudeWin: alt ? lineFor(p.leg.id, alt, data)?.win ?? null : null, cost: isNow ? (alt && rows[alt] ? Math.max(0, 1 - rows[p.team].dili / rows[alt].dili) : 0) : costs[k] ?? 0, byDili: isNow };
-    }
-  }
   const live = plan.filter((p) => p.team), xm = plan.find((p) => p.leg.id === "XM");
-  return { notes, plan, currentLeg: l0, winOut: live.length === plan.length ? live.reduce((x, p) => x * p.win, 1) : 0, expected: r1.win * r1.rest, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), rows, base: sc.base, samples: n, xmas: xm?.options || [] };
+  return { notes, plan, currentLeg: l0, winOut: !pending && live.length === plan.length ? live.reduce((x, p) => x * p.win, 1) : 0, expected: r1.win * r1.rest, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), rows, base: sc.base, samples: n, xmas: xm?.options || [], pending };
 }
-// synchronous version (tests, and the fallback when workers are unavailable)
+// synchronous version (tests, and the fallback when workers are unavailable): this week's scores, then every round
 export function simPlan(data, picks, params = PRIOR, n = SIM_PLAYOUTS) {
   const inp = simInputs(data, picks, params, n);
-  if (!inp) return { plan: [], currentLeg: null, winOut: 0, weakest: [], rows: {}, base: 1, samples: n, xmas: [] };
-  return cached(data, "sim", inp.key, () => simFromScores(data, picks, params, inp, scoreCandidates(simArgs(inp.msg))));
+  if (!inp) return emptySim(n);
+  return cached(data, "sim", inp.key, () => {
+    const args = simArgs(inp.msg), sc = scoreCandidates(args);
+    return simFromScores(data, picks, params, inp, sc, scoreRounds({ ...args, lock: simNow(data, params, inp, sc).lock }));
+  });
 }
-// the page's version: the engine runs in a worker, the hook returns null until the scores are back
+// the page's version: the engine runs in a worker; the hook returns null until this week's scores are back, then a
+// plan whose later rows fill in round by round
 const simStore = new Map(); let simWorker = null, simSeq = 0;
 const SIM_CACHE = "csp-sim";
-const simSave = (key, sc) => { try { localStorage.setItem(SIM_CACHE, JSON.stringify({ key, base: sc.base, n: sc.n, teams: Object.fromEntries(Object.entries(sc.teams).map(([i, r]) => [i, { ...r, usage: r.usage.map((u) => Array.from(u)) }])) })); } catch {} };
-const simLoad = (key) => { try { const c = JSON.parse(localStorage.getItem(SIM_CACHE) || "null"); return c && c.key === key ? c : null; } catch { return null; } };
+const simSave = (key, sc, rounds) => { try { localStorage.setItem(SIM_CACHE, JSON.stringify({ key, scores: { base: sc.base, n: sc.n, teams: Object.fromEntries(Object.entries(sc.teams).map(([i, r]) => [i, { ...r, usage: r.usage.map((u) => Array.from(u)) }])) }, rounds })); } catch {} };
+const simLoad = (key) => { try { const c = JSON.parse(localStorage.getItem(SIM_CACHE) || "null"); return c && c.key === key && c.scores && Array.isArray(c.rounds) ? c : null; } catch { return null; } };
 function useSimPlan(data, picks, params, n = SIM_PLAYOUTS) {
   const inp = useMemo(() => simInputs(data, picks, params, n), [data, picks, params, n]);
   const key = inp?.key || "", [, bump] = useState(0);
-  if (inp && !simStore.has(key)) { const c = simLoad(key); if (c) simStore.set(key, simFromScores(data, picks, params, inp, c)); }
+  if (inp && !simStore.has(key)) { const c = simLoad(key); if (c) simStore.set(key, simFromScores(data, picks, params, inp, c.scores, c.rounds)); }
   useEffect(() => {
     if (!inp || simStore.has(key)) return;
-    if (typeof Worker === "undefined") { simStore.set(key, simFromScores(data, picks, params, inp, scoreCandidates(simArgs(inp.msg)))); bump((x) => x + 1); return; }
+    if (typeof Worker === "undefined") { simStore.set(key, simPlan(data, picks, params, n)); bump((x) => x + 1); return; }
     if (!simWorker) simWorker = new Worker(new URL("./sim.worker.js", import.meta.url), { type: "module" });
-    const id = ++simSeq, onMsg = (e) => { if (e.data.id !== id) return; simWorker.removeEventListener("message", onMsg); simStore.set(key, simFromScores(data, picks, params, inp, e.data)); simSave(key, e.data); bump((x) => x + 1); };
+    const id = ++simSeq, rounds = []; let scores = null, done = false;
+    const onMsg = (e) => {
+      if (e.data.id !== id) return;
+      if (e.data.phase === "scores") { scores = e.data; simWorker.postMessage({ id, ...inp.msg, phase: "rounds", lock: simNow(data, params, inp, scores).lock }); }
+      else if (e.data.phase === "round") rounds.push(e.data.round);
+      else if (e.data.phase === "done") { done = true; simWorker.removeEventListener("message", onMsg); simSave(key, scores, rounds); }
+      simStore.set(key, simFromScores(data, picks, params, inp, scores, rounds));
+      bump((x) => x + 1);
+    };
     simWorker.addEventListener("message", onMsg);
-    simWorker.postMessage({ id, ...inp.msg });
-    return () => simWorker?.removeEventListener("message", onMsg);
+    simWorker.postMessage({ id, ...inp.msg, phase: "scores" });
+    // the inputs changed mid-run: a worker cannot be interrupted, so drop it rather than queue behind the stale rounds
+    return () => { if (!simWorker) return; simWorker.removeEventListener("message", onMsg); if (!done) { simWorker.terminate(); simWorker = null; } };
   }, [inp, key]);
-  return inp ? simStore.get(key) || null : { plan: [], currentLeg: null, winOut: 0, weakest: [], rows: {}, base: 1, samples: n, xmas: [] };
+  return inp ? simStore.get(key) || null : emptySim(n);
 }
 // share of the field still holding each team going into legId, from actual picks in earlier legs
 function availability(legId, data) { return cached(data, "av", legId, () => availabilityRaw(legId, data)); }
@@ -2149,7 +2167,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
           : tab === "locks"
           ? <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title="What Claude Rules Map has for this week">Rules</th><th title="What Claude Simulation Map has for this week">Simulation</th><th>Notes</th></tr>
           : tab === "sim"
-          ? <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title={`This week: EV ÷ the playout forfeit. Later weeks: the share of ${res.samples} playouts that used this team here`}>Used</th><th title="This week: runner-up by DILI. Later weeks: the team used next most often here">Backup</th><th>Why</th></tr>
+          ? <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title={`This week: EV ÷ the playout forfeit (${res.samples} playouts). Later weeks: win ÷ forfeit from that week's own round of playouts, with every pick above it spent`}>DILI</th><th title="Runner-up by DILI in that week's round">Backup</th><th>Why</th></tr>
           : <tr><th>Week</th><th>Pick</th><th>Game</th><th>Win</th><th title="DILI for that week, scored as the Planner scores it">DILI</th><th title="This week: second-best DILI. Later weeks: the strongest team the plan leaves free">Backup</th><th>Why</th></tr>}</thead>
         <tbody>
           {(tab === "sim" || tab === "locks") && !sim && <tr><td colSpan={7} className="why">Running {SIM_PLAYOUTS} playouts of the rest of the season…</td></tr>}
@@ -2191,19 +2209,20 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
             const yours = p.fixed ? "Your pick." + (fx?.claude && fx.claude !== p.team ? ` Claude would take ${fx.claude} (${pct0(fx.claudeWin)}) here; your pick costs ${Math.round(100 * fx.cost)}% ${fx.byDili ? "of DILI" : "of win-out"}.` : " Claude would pick it too.") : "";
             const soft = mine && mine !== p.team ? ` You have ${mine} entered for this week; this map would use ${mine} ${planWeek[mine] ? "in " + legLabel(planWeek[mine]) : "nowhere"}.` : "";
             let why;
-            if (!p.team) why = "Nothing eligible left for this week: it would be a forfeit.";
+            if (p.pending) why = "Running this week's round of playouts…";
+            else if (!p.team) why = "Nothing eligible left for this week: it would be a forfeit.";
             else if (p.fixed) why = (yours + holidayNote(p)).trim();
-            else if (tab === "sim" && p.planned) why = ((p.options && p.options.length > 1 ? `Playouts used ${p.options.map(([t, x]) => `${t} ${pct0(x)}`).join(", ")}.` : "Used here in every playout.") + holidayNote(p) + soft).trim();
+            else if (tab === "sim" && p.planned) why = (`Top DILI once the picks above are spent${p.backup && p.backupDili != null ? (p.dili - p.backupDili < 0.03 ? `; close call, ${p.backup} is ${(p.dili - p.backupDili).toFixed(2)} behind` : `, ${(p.dili - p.backupDili).toFixed(2)} ahead of ${p.backup}`) : ""}.` + (p.options && p.options.length ? ` Today's playouts put this week on ${p.options.map(([t, x]) => `${t} ${pct0(x)}`).join(", ")}.` : "") + holidayNote(p) + soft).trim();
             else if (p.planned) why = ((tab === "rules" && l.id === "XM" && rules.held.length ? `Held back for this slate: ${rules.held.join(", ")}. ` : "") + (p.backup ? "" : "Nothing else is free this week.") + holidayNote(p) + soft).trim();
             else why = (p.backup == null ? "Only option." : p.dili - p.backupDili < 0.03 ? `Close call, ${p.backup} is ${(p.dili - p.backupDili).toFixed(2)} behind.` : `Clear, ${(p.dili - p.backupDili).toFixed(2)} ahead of ${p.backup}.`) + holidayNote(p) + soft;
             return (
-              <tr key={l.id} className={cls + (p.team ? "" : " dead") + (p.fixed ? " mine" : "")}>
+              <tr key={l.id} className={cls + (p.team || p.pending ? "" : " dead") + (p.fixed ? " mine" : "")}>
                 <td>{legLabel(l)}</td>
-                <td><span className="pc">{p.team ? teamChip(p.team) : "–"}</span></td>
+                <td><span className="pc">{p.team ? teamChip(p.team) : p.pending ? "…" : "–"}</span></td>
                 <td>{p.team ? gameText(l.id, p.team, data) : ""}</td>
                 <td className={p.win != null && p.win < 0.6 ? "weak" : ""}>{pct0(p.win)}</td>
-                <td>{tab === "sim" && p.planned ? (p.team ? pct0(p.held) : "") : (p.dili != null ? p.dili.toFixed(2) : "")}</td>
-                <td className="bk">{p.backup ? <span className="bkw">{teamChip(p.backup, true)}<span className="bn">{tab === "sim" && p.planned ? pct0(p.backupHeld) : p.backupDili != null ? p.backupDili.toFixed(2) : pct0(p.backupWin)}</span></span> : "–"}</td>
+                <td>{p.dili != null ? p.dili.toFixed(2) : p.pending ? "…" : ""}</td>
+                <td className="bk">{p.backup ? <span className="bkw">{teamChip(p.backup, true)}<span className="bn">{p.backupDili != null ? p.backupDili.toFixed(2) : pct0(p.backupWin)}</span></span> : "–"}</td>
                 <td className="why" title={why}>{why}</td>
               </tr>
             );

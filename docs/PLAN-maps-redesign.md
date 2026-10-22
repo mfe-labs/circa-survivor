@@ -43,9 +43,13 @@ between the two new maps.
   re-solves with only the lines as they stand then, picks, and the game resolves at the final win chance. A
   candidate's value is the share of playouts that win out. Optionality is valued because the simulated planner gets
   to use whichever Christmas team turned out good; nothing is hard-coded about Christmas.
-- Map rows: this week = best candidate with each candidate's win-out beside it; later weeks = the team used most
-  often in that week across playouts, with its share ("Held" = share of playouts that used it there). Christmas
-  shows the spread of options kept (e.g. BUF 34%, DEN 29%, CHI 22%).
+- Map rows: this week = best candidate with each candidate's win-out beside it; later weeks = sequential rounds
+  (since 2026-10-21): lock this week's pick, run a full round of playouts for next week with it spent and lock the top
+  win ÷ forfeit, repeat to the end of the season. One coherent path, each step chosen the way this week's pick is.
+  (The first version showed the team used most often in each week across playouts, a vote no single playout
+  followed; it put PIT in Week 17 while LAR sat unused because LAR's uses were split across several weeks.)
+  Each row still notes what today's playouts did in that week; Christmas shows the spread of options kept
+  (e.g. BUF 34%, DEN 29%, CHI 22%).
 - Optional, judgment-set: a small per-team-per-week chance of a sudden multi-point drop (injury jump, Jeremy's
   Mahomes example). Cannot be measured well; off unless Jamie wants it.
 - Cost: ~50,000 small assignment solves for a dozen candidates; expected 1–3 s in the browser. If too slow for the

@@ -197,7 +197,11 @@ const lockedOnly = (en) => ({ ...en, picks: Object.fromEntries(Object.entries(en
   ok("every playout forfeit is at least 1 and finite", rows.length > 0 && rows.every((r) => r.forfeit >= 1 && Number.isFinite(r.forfeit)), `${rows.length} candidates`);
   ok("this week's pick is the top EV ÷ playout forfeit", sp.plan[0].team === Object.keys(sp.rows).sort((a, b) => sp.rows[b].dili - sp.rows[a].dili)[0]);
   ok("expected win-out sits in a sane range", sp.winOut > 0.0005 && sp.winOut < 1, `${(100 * sp.winOut).toFixed(2)}%`);
-  ok("later-week shares are shares", sp.plan.slice(1).every((q) => q.held > 0 && q.held <= 1 + 1e-9));
+  ok("later rows carry a DILI from their own round, and today's usage share stays a share", sp.pending === 0 && sp.plan.slice(1).every((q) => q.dili > 0 && q.held >= 0 && q.held <= 1 + 1e-9));
+  // the Week 17 bug (2026-10-21): a later row showed the most-used team across playouts, which could be a weaker team
+  // than one still free; each later row is now the top DILI of its own round with everything above it spent
+  ok("each later row beats its own runner-up", sp.plan.slice(1).every((q) => q.backupDili == null || q.dili >= q.backupDili - 1e-12), sp.plan.slice(1).map((q) => `${q.leg.id} ${q.team} ${q.dili?.toFixed(2)}${q.backup ? ` (${q.backup} ${q.backupDili?.toFixed(2)})` : ""}`).join(" "));
+  ok("a later row never takes a team while a free one is stronger by 10 points and unused anywhere", sp.plan.slice(1).every((q) => !q.team || !Object.keys(OPP[q.leg.id]).some((t) => !spent.has(t) && !sp.plan.some((r) => r.team === t) && (lineFor(q.leg.id, t, real)?.win ?? 0) >= q.win + 0.1)));
   const same = simPlan(real, e.picks, params); ok("same inputs, same simulation", same === sp || same.plan.map((q) => q.team).join() === sp.plan.map((q) => q.team).join());
   const both = rows.filter((r) => r.oldForfeit != null && Number.isFinite(r.oldForfeit));
   const corr = (() => { const n = both.length, mx = both.reduce((a, r) => a + Math.log(r.forfeit), 0) / n, my = both.reduce((a, r) => a + Math.log(r.oldForfeit), 0) / n; const sxy = both.reduce((a, r) => a + (Math.log(r.forfeit) - mx) * (Math.log(r.oldForfeit) - my), 0), sx = Math.sqrt(both.reduce((a, r) => a + (Math.log(r.forfeit) - mx) ** 2, 0)), sy = Math.sqrt(both.reduce((a, r) => a + (Math.log(r.oldForfeit) - my) ** 2, 0)); return sx && sy ? sxy / (sx * sy) : 0; })();

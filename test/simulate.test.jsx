@@ -1,5 +1,5 @@
 // The playout engine on hand-built seasons (docs/PLAN-maps-redesign.md, step 2 checks)
-import { solve, simulate, scoreCandidates, incrementVar, SIM_TRUST } from "../src/simulate.js";
+import { solve, simulate, scoreCandidates, scoreRounds, incrementVar, SIM_TRUST } from "../src/simulate.js";
 import { normCdf } from "../src/solver.js";
 let fails = 0;
 const ok = (name, cond, note = "") => { console.log(`${name}: ${cond ? "OK" : "FAIL"} ${note}`); if (!cond) fails++; };
@@ -80,6 +80,24 @@ const drift = (lead) => (lead === 1 ? 1.5 : 3 + 0.25 * lead) / 11.5;
   const burned = new Array(6).fill(0); burned[3] = 1;
   const r = simulate({ ...L, burned, sdLead: drift, n: 64, fixed: { 1: 3 } });
   ok("a fixed week uses its team in every playout", r.usage[1][3] > 0.999 && [0, 2].every((j) => r.usage[j][3] < 1e-9), `week 1 team 3: ${r.usage[1][3].toFixed(2)}`);
+})();
+
+// 3d. sequential rounds: one coherent path, each week locked in from its own round with everything before it spent
+(() => {
+  const L = league(6, [[[0, 1, 0.75], [2, 3, 0.65], [4, 5, 0.55]], [[2, 0, 0.7], [4, 1, 0.6], [5, 3, 0.52]], [[4, 2, 0.8], [0, 3, 0.62], [1, 5, 0.58]]]);
+  const burned = new Array(6).fill(0);
+  const plan = solve(L.z, Object.fromEntries(L.legs.map((k) => [k, new Float64Array(6)])), null, L.legs, [0, 1, 2, 3, 4, 5]);
+  const rounds = scoreRounds({ ...L, burned, sdLead: noNoise, n: 8, lock: plan[0] });
+  ok("no noise: the rounds walk the survival plan", rounds.length === 2 && rounds.every((r, j) => r.pick === plan[j + 1]), `plan ${plan.join(",")} rounds ${rounds.map((r) => r.pick).join(",")}`);
+  const noisy = scoreRounds({ ...L, burned, sdLead: drift, n: 64, lock: plan[0] });
+  ok("picks are distinct and never the locked team", new Set([plan[0], ...noisy.map((r) => r.pick)]).size === 3);
+  ok("each round's pick is its own top win ÷ forfeit", noisy.every((r) => r.pick === +Object.keys(r.teams).sort((a, b) => r.teams[b].dili - r.teams[a].dili)[0]));
+  ok("a team already picked is not scored again", noisy.every((r, j) => r.teams[plan[0]] == null && (j === 0 || r.teams[noisy[0].pick] == null)));
+  const seen = []; scoreRounds({ ...L, burned, sdLead: drift, n: 64, lock: plan[0] }, (r) => seen.push(r.round));
+  ok("rounds are reported one at a time, in order", seen.join() === "1,2");
+  const fx = scoreRounds({ ...L, burned, sdLead: drift, n: 64, lock: plan[0], fixed: { 2: 5 } });
+  ok("a fixed later week takes its team and is marked", fx[1].pick === 5 && fx[1].fixed && !fx[0].fixed && fx[0].pick !== 5, `week 2 → ${fx[1].pick}`);
+  ok("a fixed team is still scored in its own week, so its cost can be shown", fx[1].teams[5] != null && fx[1].teams[5].dili > 0);
 })();
 
 // 4. speed: a season-sized problem

@@ -166,8 +166,16 @@ fetch fails, last season's market ratings regressed 40% toward average are the f
   numerics. `sim.worker.js` runs it off the main thread.
 - `simPlan(data, picks, params)` / `useSimPlan` is Claude Simulation Map: inputs from seasonTable (z, ff for the
   current leg, SIM_OPP, SIM_SD by lead), scores from the engine, this week = top EV ÷ playout forfeit (rows carry
-  `oldForfeit` for the comparison), later rows = most-used team per week not already shown, Christmas = usage spread.
-  512 playouts: forfeits move about ±0.01 between seeds; the page caches the last result in localStorage (csp-sim).
+  `oldForfeit` for the comparison). Later rows are one coherent path from `scoreRounds`: with this week's pick spent,
+  the next week's teams are all scored by a full round of playouts and the top win ÷ forfeit is locked in (or the
+  entry's own pick, scored the same way for its cost note), then the week after with both spent, and so on; each
+  round treats its week as the present with the lines at today's projections. Until 2026-10-21 the later rows were
+  the most-used team per week across playouts not already shown, a vote no single playout followed, which could put a
+  weaker team in a week while a stronger one sat unused (Week 17: PIT over a free LAR). Rows carry `dili`/`backupDili`
+  from their round and `held`/`options` (what today's playouts did in that week) as a note; Christmas = usage spread.
+  The worker posts `scores` for this week, then one `round` message per later week (rows fill in as they land,
+  `pending` rows show "…"), then `done`; a change of inputs mid-run terminates the worker rather than queueing.
+  512 playouts: forfeits move about ±0.01 between seeds; the page caches the last full result in localStorage (csp-sim).
   `SIM_TRUST` = 0.7: a later week's realized win chance blends
   the moved line (70%) with today's (30%); the simulated planner still picks on the moved line. The Simulation map's
   `winOut` is the product of today's lines along its shown path (apples to apples); `expected` is win × rest.
