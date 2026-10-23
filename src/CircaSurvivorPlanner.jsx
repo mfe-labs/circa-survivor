@@ -651,9 +651,14 @@ export function rulesPlan(data, picks, params = PRIOR, hold = RULE_HOLD, forfeit
     if (q.team) before.add(q.team);
   }
   const live = plan.filter((p) => p.team), winOut = live.length === plan.length && plan.length ? live.reduce((x, p) => x * p.win, 1) : 0;
-  // the price of the rule: the same plan with nothing held
+  // the price of the rule: the same plan with nothing held. Priced on what the solver maximises, expected survival
+  // over the movement still ahead (exp of pathValue), where an unconstrained plan is never worse than a blocked one.
+  // Win-out at today's lines is a different number, and a blocked plan can beat the free plan on it by a hair (it did
+  // on 2026-10-23), so it is reported but never used as the price.
   const freePath = cur ? pathWithFixed(tab, rest, bi2, fixed) : [];
   const freeWinOut = cur && freePath.every((q) => q.team) ? plan[0].win * freePath.reduce((x, q) => x * q.win, 1) : null;
+  const survival = cur && path.every((q) => q.team) ? Math.exp(pathValue(path)) : null, freeSurvival = freeWinOut != null ? Math.exp(pathValue(freePath)) : null;
+  const price = survival != null && freeSurvival != null ? Math.max(0, 1 - survival / freeSurvival) : null;
   // the entry's fixed picks: what Claude would have put there, and what each one costs
   const notes = {};
   if (Object.keys(fixed).length) {
@@ -665,7 +670,7 @@ export function rulesPlan(data, picks, params = PRIOR, hold = RULE_HOLD, forfeit
       notes[p.leg.id] = { claude: alt || null, claudeWin: alt ? lineFor(p.leg.id, alt, data)?.win ?? null : null, cost: isNow ? (dm != null && da ? Math.max(0, 1 - dm / da) : 0) : costs[k] ?? 0, byDili: isNow };
     }
   }
-  return { plan, currentLeg: LEGS[tab.nowIdx] || null, winOut, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), cheap, held, pair, active, hold: n, pool, freeWinOut, notes };
+  return { plan, currentLeg: LEGS[tab.nowIdx] || null, winOut, weakest: [...live].sort((a, b) => a.win - b.win).slice(0, 3), cheap, held, pair, active, hold: n, pool, freeWinOut, survival, freeSurvival, price, notes };
 }
 // Claude Simulation Map (docs/PLAN-maps-redesign.md): what the model would do if it decided for itself, with
 // optionality priced by the playout engine in simulate.js. Every team with a game this week is scored by the chance
@@ -2161,7 +2166,7 @@ function MapView({ data, params, entry, status, maps, canEdit, onMaps }) {
         <div className="fig"><div className={"v" + (box.winOut == null && box.winNote ? " bad" : "")}>{box.winOut != null ? (100 * box.winOut).toFixed(1) + "%" : box.winNote ? "not valid" : "–"}</div><div className="k">{box.winOut == null && box.winNote ? box.winNote : box.winCap || "chance of winning every week on this map"}{box.expected != null && <span className="sub">{(100 * box.expected).toFixed(1)}% expected if you re-pick each week as the lines move</span>}</div></div>
         <div className="fig"><div className="v sm">{box.weakest.map((p) => <span key={p.leg.id}>{shortLeg(p.leg)} {pct0(p.win)}</span>)}</div><div className="k">weakest weeks, where the entry most likely dies</div></div>
         {box.simBox ? <div className="fig"><div className="v sm">{res.xmas.length ? res.xmas.map(([t, x]) => <span key={t}>{teamChip(t, true)} <span className="mut">{pct0(x)}</span></span>) : "–"}</div><div className="k">Christmas options kept: how often the playouts used each team there</div></div>
-        : box.rule ? <div className="fig"><div className="v sm">{rules.held.length ? rules.held.map((t) => <span key={t}>{teamChip(t, true)}</span>) : "none"}{rules.freeWinOut != null && rules.winOut > 0 && <span className="mut"> costs {Math.max(0, Math.round(100 * (1 - rules.winOut / rules.freeWinOut)))}% of win-out</span>}</div><div className="k">{rules.active ? `held for Christmas until Thanksgiving is played${rules.pair ? ", both sides of one game" : ""}; what the holdback costs against the unconstrained plan` : rules.pool.length ? "Thanksgiving is played: nothing held, the rule has lifted" : "no Christmas teams left to hold"}</div></div>
+        : box.rule ? <div className="fig"><div className="v sm">{rules.held.length ? rules.held.map((t) => <span key={t}>{teamChip(t, true)}</span>) : "none"}{rules.price != null && <span className="mut"> costs {Math.round(100 * rules.price)}% of expected win-out</span>}</div><div className="k">{rules.active ? `held for Christmas until Thanksgiving is played${rules.pair ? ", both sides of one game" : ""}; what the holdback costs against the unconstrained plan` : rules.pool.length ? "Thanksgiving is played: nothing held, the rule has lifted" : "no Christmas teams left to hold"}</div></div>
         : box.cheapLeg && <div className="fig"><div className="v sm">{box.cheap.length ? box.cheap : "none"}</div><div className="k">{box.cheapCap(legLabel(box.cheapLeg))}</div></div>}
       </div>
       <table className="dist maptab">

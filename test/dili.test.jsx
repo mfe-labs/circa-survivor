@@ -166,11 +166,16 @@ const lockedOnly = (en) => ({ ...en, picks: Object.fromEntries(Object.entries(en
   else ok("rule is active before Thanksgiving and holds three Christmas teams", rp.active && rp.hold === 3 && rp.held.length === 3 && rp.held.every((t) => XM_TEAMS.has(t) && !spent.has(t)), rp.held.join(", "));
   ok("held teams are not used anywhere before Christmas", rp.plan.every((q) => !q.team || K(q.leg.id) >= xm || !rp.held.includes(q.team)));
   ok("Rule map fills every week with distinct teams, none spent", rp.plan.every((q) => q.team) && new Set(rp.plan.map((q) => q.team)).size === rp.plan.length && rp.plan.every((q) => !spent.has(q.team)));
-  ok("the price is the win-out gap against the unconstrained plan", rp.freeWinOut != null && rp.freeWinOut >= rp.winOut - 1e-12, `rule ${(100 * rp.winOut).toFixed(3)}% vs free ${(100 * rp.freeWinOut).toFixed(3)}%`);
+  // the price is measured on what the solver maximises (expected survival over the movement ahead), where blocking
+  // teams can never help. Win-out at today's lines is a different number and a blocked plan can edge the free plan
+  // on it (2026-10-23: rule 1.180% vs free 1.175% broke the deploy), so it is reported, not asserted against.
+  ok("the price is the expected-survival gap against the unconstrained plan", rp.freeSurvival != null && rp.freeSurvival >= rp.survival - 1e-12 && rp.price >= 0 && Math.abs(rp.price - (1 - rp.survival / rp.freeSurvival)) < 1e-9, `rule ${(100 * rp.survival).toFixed(3)}% vs free ${(100 * rp.freeSurvival).toFixed(3)}% expected · at today's lines ${(100 * rp.winOut).toFixed(3)}% vs ${(100 * rp.freeWinOut).toFixed(3)}%`);
   const r0 = rulesPlan(real, e.picks, params, 0);
-  ok("with nothing held the Rule map has no price", r0.held.length === 0 && Math.abs(r0.winOut - r0.freeWinOut) < 1e-12);
+  ok("with nothing held the Rule map has no price", r0.held.length === 0 && r0.price === 0 && Math.abs(r0.winOut - r0.freeWinOut) < 1e-12);
   const r4 = rulesPlan(real, e.picks, params, 4);
-  ok("holding more never raises win-out", r4.winOut <= rp.winOut + 1e-12 && rp.winOut <= r0.winOut + 1e-12, `hold 4 ${(100 * r4.winOut).toFixed(3)}% ≤ hold 3 ${(100 * rp.winOut).toFixed(3)}% ≤ hold 0 ${(100 * r0.winOut).toFixed(3)}%`);
+  // this week's pick is the top DILI not held, so a bigger hold can change this week too; only each hold's own free
+  // plan is a guaranteed bound
+  ok("a bigger hold is priced against its own free plan", r4.held.length === Math.min(4, rp.pool.length) && r4.freeSurvival >= r4.survival - 1e-12 && r4.price >= 0, `hold 4 ${(100 * r4.price).toFixed(1)}% · hold 3 ${(100 * rp.price).toFixed(1)}% · hold 0 ${(100 * r0.price).toFixed(1)}%`);
   // given the reservation, no legal swap improves a later week
   const tab = seasonTable(real, params), idx = (t) => ALL_TEAMS.indexOf(t), held = new Set(rp.held);
   const cost = (k, t) => { const i = idx(t), z = tab.z[k][i]; return Number.isNaN(z) || (k < xm && held.has(t)) ? Infinity : -(Math.log(expWin(tab, k, i)) + tab.ff[k][i]); };

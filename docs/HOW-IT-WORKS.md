@@ -159,7 +159,10 @@ fetch fails, last season's market ratings regressed 40% toward average are the f
   from the unspent pool, run `survivalPath` with those teams blocked in every leg before XM, keep the best value; a
   choice containing both sides of one Christmas game is preferred when within RULE_SLACK (2% of win-out). Active while
   `nowIdx <= TG`; afterwards nothing is held. This week = top DILI not held, with the playout forfeit once it is in.
-  Returns held, pair, winOut and `freeWinOut` (same current pick, nothing held) for the price shown on the strip.
+  Returns held, pair, winOut, `freeWinOut` (same current pick, nothing held) and the `price` shown on the strip:
+  1 − survival ÷ freeSurvival, where survival = exp(pathValue) is the expected survival the solver maximises. The
+  price is not taken from winOut at today's lines: that is a different quantity and a blocked plan can edge the free
+  plan on it (2026-10-23, 1.180% vs 1.175%, which failed two tests and blocked a deploy).
 - `simulate.js` is the playout engine (docs/PLAN-maps-redesign.md step 2): `solve` (assignment on E[win] over the
   movement still ahead), `simulate` (rolling re-plan week by week on a random walk of team-level shocks whose
   per-lead variance matches noiseSd; antithetic pairs; seeded), `scoreCandidates` (win now, rest = expected survival of
