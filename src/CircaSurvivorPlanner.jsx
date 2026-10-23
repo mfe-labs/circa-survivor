@@ -1711,19 +1711,29 @@ export default function CircaSurvivorPlanner() {
     return [...ALL_TEAMS].sort((a, b) => { const ta = tier(a), tb = tier(b); if (ta !== tb) return ta - tb; const va = val(a), vb = val(b); if (va === vb) return a < b ? -1 : 1; return (va < vb ? 1 : -1) * d; });
   }, [sort, stats, data, legId, usedBy]);
 
-  // stretch the week columns (and the Future column absorbs the remainder) so the board fills its container
+  // stretch the week columns (and the Team column absorbs the remainder) so the board fills its container exactly.
+  // The Team column cannot go below what its widest entry name needs ("out 2 CIRCAmcised-3" wants 128px, the
+  // assumed floor was 116), and when it is forced wider the table outgrows its box by that much and the board
+  // scrolls sideways by a few pixels. So the table is watched too: when it comes out wider than the widths it was
+  // given, the Team floor rises by the difference and the width is split again.
   const wrapRef = useRef(null);
   const [fit, setFit] = useState({ cw: 48, teamw: 116 });
+  const minTeam = useRef(116);
   useEffect(() => {
     const el = wrapRef.current; if (!el) return;
-    const LEFT = 360, MIN_CW = 48, MIN_TEAM = 116;
+    const LEFT = 360, MIN_CW = 48;
     const measure = () => {
-      const w = el.clientWidth - LEFT - MIN_TEAM;
-      const cw = Math.max(MIN_CW, Math.floor(w / LEGS.length));
-      setFit({ cw, teamw: Math.max(MIN_TEAM, MIN_TEAM + w - cw * LEGS.length) });
+      // the table's excess over the widths it was given is the Team column being forced open (not the box shrinking)
+      const cur = parseFloat(el.style.getPropertyValue("--teamw")) || 0, curCw = parseFloat(el.style.getPropertyValue("--cw")) || 0, tb = el.querySelector("table");
+      const over = tb && cur ? tb.getBoundingClientRect().width - (LEFT + curCw * LEGS.length + cur) : 0;
+      if (over > 0.5) minTeam.current = Math.max(minTeam.current, Math.ceil(cur + over));
+      const w = el.clientWidth - LEFT - minTeam.current;
+      const cw = Math.max(MIN_CW, Math.floor(w / LEGS.length)), teamw = Math.max(minTeam.current, minTeam.current + w - cw * LEGS.length);
+      setFit((f) => (f.cw === cw && f.teamw === teamw ? f : { cw, teamw }));
     };
     measure();
     const ro = new ResizeObserver(measure); ro.observe(el);
+    const tb = el.querySelector("table"); if (tb) ro.observe(tb);
     return () => ro.disconnect();
   }, [view]);
   // on a phone the schedule scrolls sideways under the pinned columns; bring the selected week into view
