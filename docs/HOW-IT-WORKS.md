@@ -91,7 +91,8 @@ each with its own pick. Each team once per entry. Tie = loss. Schedule is hard-c
   complete weeks, top pick vs others, shrunk toward 0.06 / 0.30; the model's `errTop` / `errOther`), and
   a Thursday team under a holiday hold-back of more than 10% (`SPLASH_HOLD_CUT`) gets at most a third of its blend
   from Splash (`SPLASH_HOLD_W`, set 2026-10-19: the track record predates the divergence; revisit after two more weeks);
-  the Planner's note line shows each Thursday team model-only, Splash-mapped and blended. `applyAnchor` pins the blend in `modelPick`, the forward field and the band draws (jittered by the blend's SD),
+  each Thursday team's P% tooltip shows the reading, the mapped share, the weights and the blend (the Planner's note line
+  no longer repeats them, removed 2026-10-23 as clutter). `applyAnchor` pins the blend in `modelPick`, the forward field and the band draws (jittered by the blend's SD),
   scaling every other team to fill the rest. A Thursday `final` sets that game's win chance to 0/1 for EV, the
   DILI map and the bands; the W% cell reads won/lost. Off for any week with Circa actuals.
 - Before lock the P% cell shows the model's estimate and the P%, EV and DILI tooltips show a band: `modelPickRange` jiggles every posted win chance by `LINE_MOVE` =

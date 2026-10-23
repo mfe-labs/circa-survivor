@@ -1762,9 +1762,6 @@ export default function CircaSurvivorPlanner() {
     return null;
   })();
   const pulled = data.oddsAt ? `Lines updated ${fmtTime(data.oddsAt)}` : null;
-  // the Thursday teams two ways, model alone and with Splash, so a disagreement is seen rather than averaged away
-  const spNote = (() => { const th = Object.keys(OPP[legId] || {}).filter((t) => stats[t]?.anchor != null); if (!th.length) return null;
-    return "Thursday (Splash): " + th.map((t) => `${t} model ${pctP(stats[t].pm)} · Splash ${pctP(stats[t].anchorMap)} · blended ${pctP(stats[t].anchor)}${stats[t].anchorHeld ? " (holiday team, Splash capped at ⅓)" : ""}`).join(" · "); })();
   const lineNote = (() => {
     if (circaNote) return circaNote;
     if (!legInfo) return "No lines yet for this week";
@@ -1837,7 +1834,7 @@ export default function CircaSurvivorPlanner() {
             </div>
             <div className="row">
               {canEdit && <button className="btn" onClick={updateLines} disabled={updating} title="Pull fresh moneylines from the sportsbooks now (otherwise twice a day)">{updating ? "Updating…" : "Update lines"}</button>}
-              <span className={"note" + (status ? (statusErr ? " err" : " msg") : "")} title={!status ? `Lines update automatically twice a day. ${stamp}` : undefined}>{!loaded ? "Loading…" : status || <>{lineNote}{pulled && <span className="sub">{pulled}</span>}{simCurrent && !simNow && <span className="sub">Forfeits provisional: the playouts are running…</span>}{spNote && <span className="sub">{spNote}</span>}</>}</span>
+              <span className={"note" + (status ? (statusErr ? " err" : " msg") : "")} title={!status ? `Lines update automatically twice a day. ${stamp}` : undefined}>{!loaded ? "Loading…" : status || <>{lineNote}{pulled && <span className="sub">{pulled}</span>}{simCurrent && !simNow && <span className="sub">Forfeits provisional: the playouts are running…</span>}</>}</span>
             </div>
           </div>
         </div>
