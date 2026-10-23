@@ -2,7 +2,7 @@
  "source": "Splash x Polymarket Survivor World Championship ($1,000, ~22,700 entries). Stats tab, transcribed from Jeremy's screenshots. picks = entries on each team; survived/eliminated from the week header (missed picks count inside eliminated). thursday = the reading right after the Thursday game kicks off; final = that game's result (W/L).",
  "mapping": {
   "gamma": 1.2,
-  "note": "Circa share ≈ Splash share^gamma ÷ Z, Z = mean over complete weeks of Σ share^gamma; fitted on Weeks 1–4 (28 team-weeks ≥1% in both)"
+  "note": "Circa share \u2248 Splash share^gamma \u00f7 Z, Z = mean over complete weeks of \u03a3 share^gamma; fitted on Weeks 1\u20134 (28 team-weeks \u22651% in both)"
  },
  "weeks": {
   "W1": {
@@ -176,9 +176,6 @@
    "survived": 1019,
    "eliminated": 1459,
    "missed": 3,
-   "pending": {
-    "SF": 82
-   },
    "picks": {
     "LAR": 1023,
     "NE": 513,
@@ -196,6 +193,17 @@
     "DEN": 1,
     "CLE": 1,
     "TB": 1
+   }
+  },
+  "W7": {
+   "thursday": {
+    "asOf": "2026-10-23T02:01:43Z",
+    "alive": 1019,
+    "picks": {
+     "NE": 0,
+     "CHI": 0
+    },
+    "final": {}
    }
   }
  }
