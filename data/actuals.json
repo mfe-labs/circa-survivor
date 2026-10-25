@@ -716,6 +716,107 @@
      "SEA": 0.528
     }
    }
+  },
+  "W7": {
+   "asOf": "Oct 24 (15 pending)",
+   "picks": {
+    "HOU": 303,
+    "DEN": 134,
+    "CAR": 54,
+    "MIN": 378,
+    "CLE": 35,
+    "NYJ": 256,
+    "LAR": 19,
+    "ATL": 2,
+    "DET": 8,
+    "PIT": 32,
+    "DAL": 47,
+    "CHI": 3,
+    "CIN": 1,
+    "TEN": 1,
+    "SEA": 1,
+    "SF": 1,
+    "NOPICK": 2
+   },
+   "won": [
+    "CHI"
+   ],
+   "lost": [
+    "NOPICK"
+   ],
+   "pending": [
+    "HOU",
+    "DEN",
+    "CAR",
+    "MIN",
+    "CLE",
+    "NYJ",
+    "LAR",
+    "ATL",
+    "DET",
+    "PIT",
+    "DAL",
+    "CIN",
+    "TEN",
+    "SEA",
+    "SF"
+   ],
+   "source": "https://www.circasports.com/wp-content/uploads/2026/10/Circa-Survivor-2026-Week-7-Selections.pdf",
+   "hs": {
+    "TG": {
+     "GB": 0.322,
+     "LAR": 0.678,
+     "CHI": 0.462,
+     "DET": 0.538,
+     "PHI": 0.304,
+     "DAL": 0.696,
+     "KC": 0.431,
+     "BUF": 0.569,
+     "DEN": 0.528,
+     "PIT": 0.472
+    },
+    "XM": {
+     "HOU": 0.633,
+     "PHI": 0.367,
+     "GB": 0.371,
+     "CHI": 0.629,
+     "BUF": 0.559,
+     "DEN": 0.441,
+     "LAR": 0.469,
+     "SEA": 0.531
+    }
+   },
+   "fv": {
+    "NE": 3.55,
+    "CHI": 3.34,
+    "PIT": 1.25,
+    "NO": 1.18,
+    "CLE": 0.13,
+    "TEN": 0.02,
+    "MIA": 0.02,
+    "NYJ": 0.24,
+    "IND": 2.13,
+    "MIN": 2.32,
+    "CIN": 5.36,
+    "BAL": 1.93,
+    "NYG": 0.17,
+    "HOU": 4.02,
+    "TB": 0.34,
+    "CAR": 0.96,
+    "SF": 4.79,
+    "ATL": 0.38,
+    "DEN": 3.07,
+    "ARI": 0.23,
+    "LAR": 4.32,
+    "LV": 1.02,
+    "GB": 1.48,
+    "DET": 4.27,
+    "KC": 4.69,
+    "SEA": 4.05,
+    "DAL": 3.75,
+    "PHI": 0.43
+   },
+   "fvAt": "2026-10-25T01:15:00.788Z"
   }
  }
 }
