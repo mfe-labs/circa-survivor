@@ -718,7 +718,7 @@
    }
   },
   "W7": {
-   "asOf": "Oct 24 (15 pending)",
+   "asOf": "Oct 25 (14 pending)",
    "picks": {
     "HOU": 303,
     "DEN": 134,
@@ -739,6 +739,7 @@
     "NOPICK": 2
    },
    "won": [
+    "PIT",
     "CHI"
    ],
    "lost": [
@@ -754,7 +755,6 @@
     "LAR",
     "ATL",
     "DET",
-    "PIT",
     "DAL",
     "CIN",
     "TEN",
