@@ -718,7 +718,7 @@
    }
   },
   "W7": {
-   "asOf": "Oct 25 (14 pending)",
+   "asOf": "Oct 25 (5 pending)",
    "picks": {
     "HOU": 303,
     "DEN": 134,
@@ -739,27 +739,27 @@
     "NOPICK": 2
    },
    "won": [
+    "MIN",
+    "CLE",
+    "ATL",
     "PIT",
-    "CHI"
+    "CHI",
+    "CIN"
    ],
    "lost": [
+    "HOU",
+    "CAR",
+    "NYJ",
+    "TEN",
+    "SF",
     "NOPICK"
    ],
    "pending": [
-    "HOU",
     "DEN",
-    "CAR",
-    "MIN",
-    "CLE",
-    "NYJ",
     "LAR",
-    "ATL",
     "DET",
     "DAL",
-    "CIN",
-    "TEN",
-    "SEA",
-    "SF"
+    "SEA"
    ],
    "source": "https://www.circasports.com/wp-content/uploads/2026/10/Circa-Survivor-2026-Week-7-Selections.pdf",
    "fv": {
