@@ -818,7 +818,7 @@
    }
   },
   "W8": {
-   "asOf": "Nov 1 (3 pending)",
+   "asOf": "Nov 1 (final)",
    "picks": {
     "CIN": 350,
     "WAS": 81,
@@ -835,8 +835,11 @@
    },
    "won": [
     "CIN",
+    "WAS",
+    "NE",
     "JAX",
     "GB",
+    "LAR",
     "PIT",
     "DET",
     "BUF",
@@ -846,11 +849,7 @@
     "DAL",
     "NYJ"
    ],
-   "pending": [
-    "WAS",
-    "NE",
-    "LAR"
-   ],
+   "pending": [],
    "source": "https://www.circasports.com/wp-content/uploads/2026/11/Circa-Survivor-2026-Week-8-Selections.pdf",
    "fv": {
     "CAR": 0.4,
