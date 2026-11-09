@@ -908,7 +908,7 @@
    }
   },
   "W9": {
-   "asOf": "Nov 8 (1 pending)",
+   "asOf": "Nov 9 (final)",
    "picks": {
     "NO": 47,
     "KC": 97,
@@ -932,6 +932,7 @@
     "SEA",
     "NYG",
     "SF",
+    "CHI",
     "LAR",
     "JAX",
     "DAL",
@@ -942,9 +943,7 @@
    "lost": [
     "ATL"
    ],
-   "pending": [
-    "CHI"
-   ],
+   "pending": [],
    "source": "https://www.circasports.com/wp-content/uploads/2026/11/Circa-Survivor-2026-Week-9-Selections.pdf",
    "fv": {
     "JAX": 5.73,
