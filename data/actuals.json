@@ -1004,7 +1004,7 @@
    }
   },
   "W10": {
-   "asOf": "Nov 14 (13 pending)",
+   "asOf": "Nov 15 (5 pending)",
    "picks": {
     "LAR": 345,
     "BUF": 64,
@@ -1023,25 +1023,25 @@
     "KC": 1
    },
    "won": [
-    "WAS"
+    "BUF",
+    "JAX",
+    "IND",
+    "CAR",
+    "DET",
+    "WAS",
+    "KC"
    ],
    "lost": [
-    "NYG"
+    "NYG",
+    "HOU",
+    "GB"
    ],
    "pending": [
     "LAR",
-    "BUF",
-    "JAX",
     "SEA",
-    "IND",
     "BAL",
-    "HOU",
-    "CAR",
-    "DET",
     "CIN",
-    "SF",
-    "GB",
-    "KC"
+    "SF"
    ],
    "source": "https://www.circasports.com/wp-content/uploads/2026/11/Circa-Survivor-2026-Week-10-Selections.pdf",
    "fv": {
