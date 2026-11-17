@@ -1004,7 +1004,7 @@
    }
   },
   "W10": {
-   "asOf": "Nov 15 (1 pending)",
+   "asOf": "Nov 17 (final)",
    "picks": {
     "LAR": 345,
     "BUF": 64,
@@ -1037,12 +1037,11 @@
    ],
    "lost": [
     "NYG",
+    "BAL",
     "HOU",
     "GB"
    ],
-   "pending": [
-    "BAL"
-   ],
+   "pending": [],
    "source": "https://www.circasports.com/wp-content/uploads/2026/11/Circa-Survivor-2026-Week-10-Selections.pdf",
    "fv": {
     "WAS": 0.84,
