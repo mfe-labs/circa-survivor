@@ -1,40 +1,40 @@
 {
- "updatedAt": "2026-11-20T21:51:42.469Z",
+ "updatedAt": "2026-11-21T04:00:06.389Z",
  "prev": {
-  "updatedAt": "2026-11-20T04:01:00.251Z",
+  "updatedAt": "2026-11-20T21:51:42.469Z",
   "ratings": {
-   "ARI": -6.3,
+   "ARI": -6.4,
    "ATL": -3.4,
-   "BAL": -1.8,
-   "BUF": 6.3,
+   "BAL": -1.9,
+   "BUF": 6.2,
    "CAR": -1.1,
    "CHI": 4,
    "CIN": 5.3,
-   "CLE": -4.2,
+   "CLE": -4.1,
    "DAL": 1.8,
-   "DEN": 3.4,
-   "DET": 3.3,
+   "DEN": 3.3,
+   "DET": 3.2,
    "GB": 1.7,
-   "HOU": 3.3,
+   "HOU": 3.4,
    "IND": -3.4,
-   "JAX": 6.4,
+   "JAX": 6.3,
    "KC": 5.2,
    "LAC": -1.8,
-   "LAR": 5.1,
+   "LAR": 5,
    "LV": -5,
-   "MIA": -8.2,
-   "MIN": 3.3,
+   "MIA": -8.3,
+   "MIN": 3.4,
    "NE": -1.2,
    "NO": -2.5,
-   "NYG": -2.7,
-   "NYJ": -5.2,
-   "PHI": -4.2,
-   "PIT": 0,
+   "NYG": -2.6,
+   "NYJ": -4.6,
+   "PHI": -4.1,
+   "PIT": -0.1,
    "SEA": 4.6,
-   "SF": 5.8,
+   "SF": 5.7,
    "TB": -1,
-   "TEN": -5.9,
-   "WAS": -1.5
+   "TEN": -6,
+   "WAS": -1.4
   }
  },
  "source": "blend of market spreads 33%, ESPN FPI 33%, nfelo 33%; the market fit uses 179 games this season (nflverse closing lines + current book, recent games weighted more: 3-week half-life), anchored to the Super Bowl futures market",
@@ -152,8 +152,8 @@
   "NYG": -1.5,
   "NYJ": -3.8,
   "PHI": -2.1,
-  "PIT": -0.4,
-  "SEA": 4.1,
+  "PIT": -0.3,
+  "SEA": 4,
   "SF": 4.6,
   "TB": -2.2,
   "TEN": -7,
@@ -196,7 +196,7 @@
     "LV": -7.296,
     "MIA": -10.082
    },
-   "fetchedAt": "2026-11-20T21:51:42.469Z"
+   "fetchedAt": "2026-11-21T04:00:06.389Z"
   },
   "nfelo": {
    "asOf": "after Week 11",
@@ -234,7 +234,7 @@
     "ARI": -6.661829673479851,
     "MIA": -6.890163111414495
    },
-   "fetchedAt": "2026-11-20T21:51:42.469Z"
+   "fetchedAt": "2026-11-21T04:00:06.389Z"
   }
  },
  "ratings": {
@@ -265,7 +265,7 @@
   "NYJ": -4.6,
   "PHI": -4.1,
   "PIT": -0.1,
-  "SEA": 4.6,
+  "SEA": 4.5,
   "SF": 5.7,
   "TB": -1,
   "TEN": -6,
