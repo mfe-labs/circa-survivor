@@ -1098,6 +1098,92 @@
      "SEA": 0.514
     }
    }
+  },
+  "W11": {
+   "asOf": "Nov 21 (10 pending)",
+   "picks": {
+    "BUF": 238,
+    "DEN": 92,
+    "DAL": 45,
+    "CHI": 95,
+    "HOU": 34,
+    "PIT": 34,
+    "KC": 14,
+    "CAR": 1,
+    "DET": 5,
+    "LAC": 9,
+    "CIN": 1
+   },
+   "won": [
+    "HOU"
+   ],
+   "lost": [],
+   "pending": [
+    "BUF",
+    "DEN",
+    "DAL",
+    "CHI",
+    "PIT",
+    "KC",
+    "CAR",
+    "DET",
+    "LAC",
+    "CIN"
+   ],
+   "source": "https://www.circasports.com/wp-content/uploads/2026/11/Circa-Survivor-2026-Week-11-Selections.pdf",
+   "hs": {
+    "TG": {
+     "GB": 0.403,
+     "LAR": 0.597,
+     "CHI": 0.575,
+     "DET": 0.425,
+     "PHI": 0.22,
+     "DAL": 0.78,
+     "KC": 0.409,
+     "BUF": 0.591,
+     "DEN": 0.545,
+     "PIT": 0.455
+    },
+    "XM": {
+     "HOU": 0.699,
+     "PHI": 0.301,
+     "GB": 0.371,
+     "CHI": 0.629,
+     "BUF": 0.548,
+     "DEN": 0.452,
+     "LAR": 0.462,
+     "SEA": 0.538
+    }
+   },
+   "fv": {
+    "IND": 0.17,
+    "HOU": 3.06,
+    "ARI": 0.16,
+    "KC": 2.67,
+    "TB": 0.79,
+    "DET": 2.48,
+    "JAX": 4.25,
+    "NYG": 1.36,
+    "MIA": 0.01,
+    "BUF": 3.7,
+    "TEN": 0.04,
+    "DAL": 1.8,
+    "BAL": 0.55,
+    "CAR": 0.7,
+    "NO": 0.75,
+    "CHI": 1.81,
+    "NYJ": 0.32,
+    "LAC": 1.12,
+    "PIT": 1.06,
+    "PHI": 0.13,
+    "LV": 0.28,
+    "DEN": 3.65,
+    "MIN": 3.66,
+    "SF": 3.81,
+    "CIN": 5.3,
+    "WAS": 1.49
+   },
+   "fvAt": "2026-11-22T03:14:54.493Z"
   }
  }
 }
