@@ -1100,7 +1100,7 @@
    }
   },
   "W11": {
-   "asOf": "Nov 22 (10 pending)",
+   "asOf": "Nov 22 (1 pending)",
    "picks": {
     "BUF": 238,
     "DEN": 92,
@@ -1115,19 +1115,20 @@
     "CIN": 1
    },
    "won": [
-    "HOU"
-   ],
-   "lost": [],
-   "pending": [
     "BUF",
     "DEN",
     "DAL",
     "CHI",
-    "PIT",
+    "HOU",
     "KC",
     "CAR",
-    "DET",
-    "LAC",
+    "DET"
+   ],
+   "lost": [
+    "PIT",
+    "LAC"
+   ],
+   "pending": [
     "CIN"
    ],
    "source": "https://www.circasports.com/wp-content/uploads/2026/11/Circa-Survivor-2026-Week-11-Selections.pdf",
