@@ -1100,7 +1100,7 @@
    }
   },
   "W11": {
-   "asOf": "Nov 22 (1 pending)",
+   "asOf": "Nov 24 (final)",
    "picks": {
     "BUF": 238,
     "DEN": 92,
@@ -1126,11 +1126,10 @@
    ],
    "lost": [
     "PIT",
-    "LAC"
-   ],
-   "pending": [
+    "LAC",
     "CIN"
    ],
+   "pending": [],
    "source": "https://www.circasports.com/wp-content/uploads/2026/11/Circa-Survivor-2026-Week-11-Selections.pdf",
    "fv": {
     "IND": 0.17,
