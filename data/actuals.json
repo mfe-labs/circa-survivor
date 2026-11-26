@@ -1186,7 +1186,7 @@
    }
   },
   "TG": {
-   "asOf": "Nov 25 (9 pending)",
+   "asOf": "Nov 26 (7 pending)",
    "picks": {
     "DAL": 368,
     "CHI": 10,
@@ -1199,22 +1199,36 @@
     "PHI": 22,
     "NOPICK": 2
    },
-   "won": [],
+   "won": [
+    "LAR"
+   ],
    "lost": [
+    "GB",
     "NOPICK"
    ],
    "pending": [
     "DAL",
     "CHI",
     "BUF",
-    "GB",
-    "LAR",
     "DEN",
     "DET",
     "PIT",
     "PHI"
    ],
    "source": "https://www.circasports.com/wp-content/uploads/2026/11/Circa-Survivor-2026-Week-12a-Selections.pdf",
+   "fv": {
+    "GB": 1.76,
+    "LAR": 1.04,
+    "CHI": 1.72,
+    "DET": 2.37,
+    "PHI": 0.26,
+    "DAL": 0.86,
+    "KC": 2.99,
+    "BUF": 3.84,
+    "DEN": 3.94,
+    "PIT": 1.3
+   },
+   "fvAt": "2026-11-25T23:08:20.563Z",
    "hs": {
     "TG": {
      "GB": 0.435,
@@ -1238,20 +1252,7 @@
      "LAR": 0.469,
      "SEA": 0.531
     }
-   },
-   "fv": {
-    "GB": 1.76,
-    "LAR": 1.04,
-    "CHI": 1.72,
-    "DET": 2.37,
-    "PHI": 0.26,
-    "DAL": 0.86,
-    "KC": 2.99,
-    "BUF": 3.84,
-    "DEN": 3.94,
-    "PIT": 1.3
-   },
-   "fvAt": "2026-11-25T23:08:20.563Z"
+   }
   }
  }
 }
