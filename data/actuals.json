@@ -1186,7 +1186,7 @@
    }
   },
   "TG": {
-   "asOf": "Nov 27 (2 pending)",
+   "asOf": "Nov 27 (final)",
    "picks": {
     "DAL": 368,
     "CHI": 10,
@@ -1203,18 +1203,17 @@
     "CHI",
     "BUF",
     "LAR",
+    "PIT",
     "PHI"
    ],
    "lost": [
     "DAL",
     "GB",
+    "DEN",
     "DET",
     "NOPICK"
    ],
-   "pending": [
-    "DEN",
-    "PIT"
-   ],
+   "pending": [],
    "source": "https://www.circasports.com/wp-content/uploads/2026/11/Circa-Survivor-2026-Week-12a-Selections.pdf",
    "fv": {
     "GB": 1.76,
