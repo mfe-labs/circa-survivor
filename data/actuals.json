@@ -1186,7 +1186,7 @@
    }
   },
   "TG": {
-   "asOf": "Nov 26 (3 pending)",
+   "asOf": "Nov 27 (2 pending)",
    "picks": {
     "DAL": 368,
     "CHI": 10,
@@ -1201,6 +1201,7 @@
    },
    "won": [
     "CHI",
+    "BUF",
     "LAR",
     "PHI"
    ],
@@ -1211,7 +1212,6 @@
     "NOPICK"
    ],
    "pending": [
-    "BUF",
     "DEN",
     "PIT"
    ],
